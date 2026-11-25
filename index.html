@@ -85,7 +85,8 @@ h3{font-size:15px;margin:0 0 6px;opacity:.8;font-weight:700}
 .res{font-size:20px;font-weight:800;text-align:center;padding:12px;border-radius:14px;margin:10px 0}
 .res.ok{background:#1f8a70}.res.bad{background:#b3121f}.res.mid{background:#6a4c93}
 .tree{padding:6px 0}
-.prow{display:flex;align-items:center;gap:8px;justify-content:center;margin:7px 0}
+.prow{display:flex;align-items:center;gap:8px;justify-content:center;margin:4px 0}
+.panel.tree{padding:8px 10px;margin:8px 0}
 .pval{width:52px;text-align:right;font-weight:900;color:var(--gold);font-size:12px;flex:none}
 .prow::after{content:'';width:52px;flex:none}
 .pcards{display:flex;gap:6px}
@@ -248,7 +249,9 @@ const CONN={};   /* connId -> {pid,last} */
 function newPlayer(id,name){return{pid:id,name:clean(name)||'Speler',hand:[],taken:0,given:0,online:true};}
 function draw(){if(!S.deck.length){S.deck=newDeck();ev('Nieuwe stapel kaarten geschud');}return S.deck.pop();}
 function ev(txt,to,big){S.evN=(S.evN||0)+1;S.ev=(S.ev||[]).concat([{n:S.evN,txt,to:to||[],big:!!big}]).slice(-12);}
-function pub(){const o=Object.assign({},S);delete o.deck;o.deckN=S.deck?S.deck.length:0;return o;}
+function pub(){const o=Object.assign({},S);delete o.deck;o.deckN=S.deck?S.deck.length:0;o.now=Date.now();return o;}
+function setOn(p,v){if(!p)return;p.online=v;if(v)delete p.offAt;else if(!p.offAt)p.offAt=Date.now();}
+const KICK_MS=LOCAL&&QS.get('kick')?+QS.get('kick'):60000;
 function hostSave(){lsSet('bussen_host',JSON.stringify({code:ME.code,pid:ME.pid,S}));}
 function push(){S.seq=(S.seq||0)+1;hostSave();Net.broadcast({t:'state',s:pub()});afterState();}
 
@@ -262,7 +265,7 @@ function hostCreate(resume){
       if(err==='unavailable-id'&&!resume){UI.busy=false;clientJoin(CODE,false);return;}
       if(err){UI.busy=false;UI.err=netErr(err);render();return;}
       ME.code=code;ME.role='host';UI.busy=false;UI.conn='';
-      if(resume){S=resume.S;S.players.forEach((p,i)=>p.online=i===0);}
+      if(resume){S=resume.S;S.players.forEach((p,i)=>{delete p.offAt;setOn(p,i===0);});}
       else{S={phase:'lobby',setup:{shape:'1-4-3-2-1-1',trunk:10,peak:15,orient:null,busPen:'one'},players:[newPlayer(ME.pid,ME.name)],deck:[],ev:[],evN:0,seq:0,specN:0};}
       UI.screen='game';history.replaceState(null,'',HERE());
       UI.lastEv=S.evN||0;push();
@@ -273,16 +276,17 @@ function hostCreate(resume){
 function hostOpen(cid){CONN[cid]={pid:null,last:Date.now()};}
 function hostClose(cid){const c=CONN[cid];delete CONN[cid];if(!c||!S)return;
   const p=S.players.find(x=>x.pid===c.pid);
-  if(p&&!Object.values(CONN).some(o=>o.pid===c.pid)){if(S.phase==='lobby'){S.players=S.players.filter(x=>x!==p);ev(p.name+' is weg');}else{p.online=false;ev(p.name+' is de verbinding kwijt');}}
+  if(p&&!Object.values(CONN).some(o=>o.pid===c.pid)){if(S.phase==='lobby'){S.players=S.players.filter(x=>x!==p);ev(p.name+' is weg');}else if(!p.out){setOn(p,false);ev(p.name+' is de verbinding kwijt',[],true);}}
   if(c.spec)S.specN=Math.max(0,(S.specN||0)-1);
   push();}
 function hostMsg(cid,m){
   if(!S||!m||typeof m!=='object')return;const c=CONN[cid]||(CONN[cid]={pid:null,last:Date.now()});c.last=Date.now();
-  if(m.t==='ping'){Net.send(cid,{t:'pong'});const p=S.players.find(x=>x.pid===c.pid);if(p&&!p.online){p.online=true;push();}return;}
+  if(m.t==='ping'){Net.send(cid,{t:'pong'});const p=S.players.find(x=>x.pid===c.pid);if(p&&!p.online&&!p.out){setOn(p,true);ev(p.name+' is er weer');push();}return;}
   if(m.t==='hello'){
     c.pid=String(m.pid||'').slice(0,40);if((S.banned||[]).includes(c.pid)){Net.send(cid,{t:'kicked'});return;}let idx=S.players.findIndex(p=>p.pid===c.pid);
     if(idx===0)idx=-1; /* niemand mag zich als host voordoen */
-    if(idx>0){const p=S.players[idx];p.online=true;if(S.phase==='lobby'&&clean(m.name))p.name=clean(m.name);Net.send(cid,{t:'welcome',role:'player',code:ME.code});ev(p.name+' is (weer) verbonden');}
+    if(idx>0&&S.players[idx].out){c.spec=true;S.specN=(S.specN||0)+1;Net.send(cid,{t:'welcome',role:'spec',out:true,code:ME.code});push();return;}
+    if(idx>0){const p=S.players[idx];setOn(p,true);if(S.phase==='lobby'&&clean(m.name))p.name=clean(m.name);Net.send(cid,{t:'welcome',role:'player',code:ME.code});ev(p.name+' is (weer) verbonden');}
     else if(S.phase==='lobby'){if(S.players.length>=8){Net.send(cid,{t:'full'});return;}
       const p=newPlayer(c.pid,m.name);S.players.push(p);Net.send(cid,{t:'welcome',role:'player',code:ME.code});ev(p.name+' doet mee');}
     else{c.spec=true;S.specN=(S.specN||0)+1;Net.send(cid,{t:'welcome',role:'spec',code:ME.code});}
@@ -291,10 +295,24 @@ function hostMsg(cid,m){
   if(m.t==='act'){if(c.spec)return;const idx=S.players.findIndex(p=>p.pid===c.pid);if(idx>0)act(idx,m.a,m.v);}
 }
 setInterval(()=>{if(ME.role!=='host'||!S)return;const now=Date.now();let ch=false;
-  for(const cid in CONN){const c=CONN[cid];if(now-c.last>16000){const p=S.players.find(x=>x.pid===c.pid);delete CONN[cid];
-    if(p&&!Object.values(CONN).some(o=>o.pid===c.pid)){if(S.phase==='lobby'){S.players=S.players.filter(x=>x!==p);}else{p.online=false;ev(p.name+' is de verbinding kwijt');}ch=true;}}}
-  if(ch)push();},5000);
+  for(const cid in CONN){const c=CONN[cid];if(now-c.last>12000){const p=S.players.find(x=>x.pid===c.pid);delete CONN[cid];
+    if(p&&!Object.values(CONN).some(o=>o.pid===c.pid)){if(S.phase==='lobby'){S.players=S.players.filter(x=>x!==p);}else if(!p.out){setOn(p,false);ev(p.name+' is de verbinding kwijt',[],true);}ch=true;}}}
+  if(ch)push();},2000);
 
+setInterval(()=>{if(ME.role!=='host'||!S||S.phase==='lobby'||S.phase==='end')return;const now=Date.now();let ch=false;
+  S.players.forEach((p,i)=>{if(i>0&&!p.online&&!p.out&&p.offAt&&now-p.offAt>=KICK_MS){kickOut(i);ch=true;}});if(ch)push();},1000);
+function kickOut(i){const p=S.players[i];if(!p||p.out)return;p.out=true;p.online=false;ev(p.name+' was te lang weg en is uit het potje gezet',[],true);
+  if(S.players.filter(x=>!x.out).length<2){S.endWhy='Te weinig spelers over';S.phase='end';return;}
+  switch(S.phase){
+    case 'round':if(S.turn===i){S.reveal=null;nextTurn();}break;
+    case 'give':{const g=S.give;delete g.alloc[i];S.giveQueue=S.giveQueue.filter(q=>q.from!==i);if(g.from===i){S.give=null;giveDone();}break;}
+    case 'pyr':{const P=S.pyr;if(P.stage==='lay'){delete P.m[i];P.taps=P.taps.filter(x=>x!==i);const need=Object.keys(P.m).length;if(!need)P.stage='none';else if(P.taps.length===need)layDone();}break;}
+    case 'tb':{const T=S.tb;if(T.cands.includes(i)){const c=T.cands.filter(x=>x!==i);if(c.length===1){S.busWhy='De rest van het gelijkspel is weg.';startBs(c[0]);}else startTb(c,T.n);}break;}
+    case 'bs':if(S.rider===i)S.phase='newrider';break;
+    case 'bus':if(S.bus.rider===i)S.phase='newrider';break;
+  }
+}
+function giveDone(){if(S.giveQueue.length)startGive();else if(S.afterGive==='round')nextTurn();else nextPyr();}
 /* ---------- spelregels (alleen host) ---------- */
 function act(i,a,v){
   const P=S.players[i];if(!P)return;
@@ -313,19 +331,20 @@ function act(i,a,v){
     case 'bus':{const B=S.bus;if(i!==B.rider)return;
       if(a==='guess'&&!B.result)busGuess(v);
       else if(a==='reset'&&B.result&&B.result.type==='wrong')busReplace();
-      else if(a==='swap'&&B.result&&B.result.type==='swap'&&v!==i&&S.players[v]){B.rider=v;busReplace();ev(`${P.name} wijst ${S.players[v].name} aan: de bus in!`,[v],true);}
+      else if(a==='swap'&&B.result&&B.result.type==='swap'&&v!==i&&S.players[v]&&!S.players[v].out){B.rider=v;busReplace();ev(`${P.name} wijst ${S.players[v].name} aan: de bus in!`,[v],true);}
       else return;break;}
+    case 'newrider':if(a==='rider'&&i===0&&S.players[v]&&!S.players[v].out){S.busWhy='Gekozen door de host, want de vorige ging ervandoor.';startBs(v);}else return;break;
     case 'end':if(a==='again'&&i===0)startGame();else return;break;
     default:return;
   }
   push();
 }
 function startGame(){
-  S.players.forEach(p=>{p.hand=[];p.taken=0;p.given=0;});
+  S.players=S.players.filter(p=>!p.out);S.endWhy='';S.players.forEach(p=>{p.hand=[];p.taken=0;p.given=0;});
   S.deck=newDeck();S.round=1;S.turn=0;S.reveal=null;S.giveQueue=[];S.give=null;S.pyr=null;S.tb=null;S.bs=null;S.bus=null;S.busWhy='';
   S.phase='round';ev('Het spel begint! '+S.players[0].name+' mag beginnen');
 }
-function nextTurn(){S.turn++;if(S.turn>=S.players.length){S.turn=0;S.round++;}if(S.round>4){startPyr();return;}S.phase='round';}
+function nextTurn(){do{S.turn++;if(S.turn>=S.players.length){S.turn=0;S.round++;}}while(S.round<=4&&S.players[S.turn].out);if(S.round>4){startPyr();return;}S.phase='round';}
 function guess(val){
   const p=S.players[S.turn],h=p.hand,Rn=S.round;
   const allowed={1:['red','black'],2:['hi','lo'],3:['in','out'],4:['have','new','rainbow','ginger','blackout']}[Rn];
@@ -347,13 +366,13 @@ function guess(val){
   ev(p.name+': '+msg,take?[S.turn]:[]);
 }
 function after(){const rv=S.reveal;S.reveal=null;if(rv.give){S.giveQueue=[{from:S.turn,amount:rv.give,reason:'Gewaagde gok goed'}];S.afterGive='round';startGive();}else nextTurn();}
-function startGive(){S.give=Object.assign({},S.giveQueue.shift(),{alloc:{}});S.phase='give';}
-function ga(v){if(!v)return;const g=S.give,t=v.t|0,d=v.d>0?1:-1;if(t===g.from||!S.players[t])return;
+function startGive(){while(S.giveQueue.length&&S.players[S.giveQueue[0].from].out)S.giveQueue.shift();if(!S.giveQueue.length){S.give=null;giveDone();return;}S.give=Object.assign({},S.giveQueue.shift(),{alloc:{}});S.phase='give';}
+function ga(v){if(!v)return;const g=S.give,t=v.t|0,d=v.d>0?1:-1;if(t===g.from||!S.players[t]||S.players[t].out)return;
   const sum=Object.values(g.alloc).reduce((a,b)=>a+b,0),cur=g.alloc[t]||0;if(cur+d<0||(d>0&&sum>=g.amount))return;g.alloc[t]=cur+d;}
 function gOk(){const g=S.give,sum=Object.values(g.alloc).reduce((a,b)=>a+b,0);if(sum!==g.amount)return false;
   const parts=[],to=[];for(const k in g.alloc){if(!g.alloc[k])continue;S.players[k].taken+=g.alloc[k];parts.push(S.players[k].name+' '+g.alloc[k]);to.push(+k);}
   S.players[g.from].given+=g.amount;ev(`${S.players[g.from].name} deelt uit: ${parts.join(', ')}`,to,true);S.give=null;
-  if(S.giveQueue.length)startGive();else if(S.afterGive==='round')nextTurn();else nextPyr();return true;}
+  giveDone();return true;}
 function startPyr(){
   const p=parseShape(S.setup.shape)||{stem:1,mid:[4,3,2,1]},o=getOrient(S.setup,p);
   const mk=(n,f)=>Array.from({length:n},(_,i)=>({c:draw(),up:false,h:!!(f&&f[i]==='h')}));
@@ -363,7 +382,7 @@ function startPyr(){
   S.pyr={rows,ri:0,ci:0,k:0,stage:'ready',m:{},taps:[],wrong:[]};S.phase='pyr';ev('Op naar de boom!');
 }
 function flip(){const P=S.pyr,x=P.rows[P.ri].cards[P.ci];x.up=true;const m={};
-  S.players.forEach((p,i)=>{const n=p.hand.filter(c=>c.r===x.c.r).length;if(n)m[i]=n;});
+  S.players.forEach((p,i)=>{if(p.out)return;const n=p.hand.filter(c=>c.r===x.c.r).length;if(n)m[i]=n;});
   P.m=m;P.taps=[];P.wrong=[];P.stage=Object.keys(m).length?'lay':'none';}
 function lay(i){const P=S.pyr;if(P.taps.includes(i))return;
   if(!P.m[i]){if(P.wrong.includes(i))return;P.wrong.push(i);S.players[i].taken+=1;ev(S.players[i].name+' heeft er geen! 1 slok',[i]);return;}
@@ -378,7 +397,7 @@ function layDone(){const P=S.pyr,row=P.rows[P.ri],pc=row.cards[P.ci],card=pc.c,w
 function nextPyr(){const P=S.pyr;P.ci++;P.k++;if(P.ci>=P.rows[P.ri].cards.length){P.ri++;P.ci=0;}
   if(P.ri>=P.rows.length){toBus();return;}P.stage='ready';S.phase='pyr';}
 function toBus(){
-  const lens=S.players.map(p=>p.hand.length),max=Math.max(...lens),c=lens.map((l,i)=>l===max?i:-1).filter(i=>i>=0);
+  const lens=S.players.map(p=>p.out?-1:p.hand.length),max=Math.max(...lens),c=lens.map((l,i)=>l===max?i:-1).filter(i=>i>=0);
   if(c.length===1){S.busWhy=`Meeste kaarten over (${max}).`;startBs(c[0]);}
   else startTb(c,max);
 }
@@ -425,19 +444,19 @@ function clientMsg(m){
   if(m.t==='pong'){lastPong=Date.now();if(UI.conn){UI.conn='';render();}return;}
   lastPong=Date.now();
   if(m.t==='full'){UI.busy=false;UI.err='Dit potje zit vol (8 spelers)';Net.destroy();render();return;}
-  if(m.t==='welcome'){UI.busy=false;UI.conn='';const first=!ME.role;ME.role=m.role;
+  if(m.t==='welcome'){UI.busy=false;UI.conn='';if(m.out)toast('Je was te lang weg en bent uit het potje gezet. Je kunt wel meekijken.',true);const first=!ME.role;ME.role=m.role;
     if(m.role==='spec'&&(first||UI.screen!=='game'))UI.screen='watchpick';else UI.screen='game';
     history.replaceState(null,'',HERE());render();return;}
   if(m.t==='kicked'){ME.role=null;A.home();UI.err='De host heeft je uit het potje gehaald';render();return;}
   if(m.t==='ended'){toast('De host heeft het potje gestopt');A.home();return;}
-  if(m.t==='state'){const firstState=!S;S=m.s;if(firstState)UI.lastEv=Math.max(0,(S.evN||0)-1);afterState();}
+  if(m.t==='state'){const firstState=!S;S=m.s;UI.skew=Date.now()-(S.now||Date.now());if(firstState)UI.lastEv=Math.max(0,(S.evN||0)-1);afterState();}
 }
 function netErr(r){return{notfound:'Het potje is niet (meer) te vinden. Staat de telefoon van de host nog aan?',timeout:'Verbinden duurt te lang. Probeer het opnieuw, of zet iedereen op de hotspot van de host.',nolib:'Kon de netwerkcode niet laden.',network:'Geen verbinding met de server. Heb je internet?','unavailable-id':'Deze code is nog bezet, probeer het zo opnieuw.'}[r]||('Er ging iets mis ('+r+'). Probeer opnieuw.');}
 
 /* ================= WIE BEN IK ================= */
 function myIdx(){if(!S)return -1;return S.players.findIndex(p=>p.pid===ME.pid);}
 function viewIdx(){return ME.role==='spec'?ME.watch:myIdx();}
-function canAct(i){if(!S||ME.role==='spec'||i<0)return false;const me=myIdx();if(i===me)return true;
+function canAct(i){if(!S||ME.role==='spec'||i<0||(S.players[i]&&S.players[i].out))return false;const me=myIdx();if(i===me)return true;
   return ME.role==='host'&&S.players[i]&&!S.players[i].online;}
 function doAct(i,a,v){if(!canAct(i))return;if(ME.role==='host')act(i,a,v);else Net.csend({t:'act',a,v});}
 function forNote(i){return i!==myIdx()&&ME.role==='host'?`<div class="warn">${esc(S.players[i].name)} is offline. Jij speelt even voor hem/haar.</div>`:'';}
@@ -452,9 +471,12 @@ function afterState(){
 }
 
 /* ================= SCHERMEN ================= */
-function phaseLabel(){return{lobby:'Wachtkamer',round:`Ronde ${S.round} van 4`,give:'Slokken uitdelen',pyr:'De boom',tb:'Wie moet de bus in?',bs:'Bus klaarzetten',bus:'In de bus',end:'Klaar'}[S.phase]||'';}
-function offWarn(){const off=S.players.filter(p=>!p.online).map(p=>p.name);if(!off.length||S.phase==='lobby')return '';
-  return `<div class="warn">${esc(off.join(', '))} ${off.length>1?'hebben':'heeft'} geen verbinding meer. ${ME.role==='host'?'Jij kunt zolang voor ze spelen.':'De host kan zolang voor ze spelen.'}</div>`;}
+function phaseLabel(){return{lobby:'Wachtkamer',newrider:'Nieuwe buspassagier',round:`Ronde ${S.round} van 4`,give:'Slokken uitdelen',pyr:'De boom',tb:'Wie moet de bus in?',bs:'Bus klaarzetten',bus:'In de bus',end:'Klaar'}[S.phase]||'';}
+function offInner(){if(!S||S.phase==='lobby'||S.phase==='end')return '';const now=Date.now()-(ME.role==='host'?0:(UI.skew||0));
+  return S.players.filter(p=>!p.online&&!p.out).map(p=>{const left=Math.max(0,Math.ceil((KICK_MS-(now-(p.offAt||now)))/1000));
+    return `<div class="warn">${esc(p.name)} heeft geen verbinding. Wordt eruit gezet over <b>0:${String(left).padStart(2,'0')}</b>${ME.role==='host'?'. Jij kunt zolang voor hem/haar spelen.':''}</div>`;}).join('');}
+function offWarn(){return `<div id="offw">${offInner()}</div>`;}
+setInterval(()=>{const el=document.getElementById('offw');if(el){const h=offInner();if(el.innerHTML!==h)el.innerHTML=h;}},1000);
 function vTop(){
   const spec=ME.role==='spec'?`<br>Meekijken met <b style="font-size:13px;letter-spacing:0">${esc(S.players[ME.watch]?S.players[ME.watch].name:'')}</b>`:'';
   return `<div class="top"><b>BUSSEN</b><span>${phaseLabel()}${spec}</span>${ME.role==='spec'?`<button class="ico" onclick="A.pickWatch()">Wissel</button>`:''}<button class="ico" onclick="A.menu()">Stand</button></div>${UI.conn?`<div class="warn">${esc(UI.conn)}</div>`:''}${offWarn()}`;
@@ -464,12 +486,12 @@ function playersStrip(skip,opts){
   const html=S.players.map((p,i)=>{
     if(skip.includes(i))return '';
     const cs=p.hand.map(c=>cardH(c,'sm',true,opts.rank&&c.r===opts.rank?'hit':'')).join('')||'<span class="q">geen kaarten</span>';
-    return `<div class="pbox ${opts.hl===i?'on':''}"><div class="n"><span><i class="dot ${p.online?'':'off'}"></i>${esc(p.name)}${i===me&&ME.role!=='spec'?' (jij)':''}</span><span>${p.taken} gedronken</span></div><div class="cs">${cs}</div></div>`;
+    return `<div class="pbox ${opts.hl===i?'on':''}"><div class="n"><span><i class="dot ${p.online?'':'off'}"></i>${esc(p.name)}${i===me&&ME.role!=='spec'?' (jij)':''}</span><span>${p.out?'eruit':p.taken+' gedronken'}</span></div><div class="cs">${cs}</div></div>`;
   }).join('');
   return html?`<div class="pl">${html}</div>`:'';
 }
-function myHand(title,extra){const me=viewIdx();if(me<0)return '';const p=S.players[me];
-  const cs=p.hand.length?p.hand.map(c=>cardH(c,'xl',true,extra&&extra(c))).join(''):`<p class="q">${S.phase==='round'?'Nog geen kaarten':'Geen kaarten meer'}</p>`;
+function myHand(title,extra,size){const me=viewIdx();if(me<0)return '';const p=S.players[me];
+  const cs=p.hand.length?p.hand.map(c=>cardH(c,size||'xl',true,extra&&extra(c))).join(''):`<p class="q">${S.phase==='round'?'Nog geen kaarten':'Geen kaarten meer'}</p>`;
   return `<div class="panel me"><h3>${title||(ME.role==='spec'?'Kaarten van '+esc(p.name):'Jouw kaarten')}</h3><div class="hand">${cs}</div></div>`;}
 
 /* ---------- home ---------- */
@@ -568,7 +590,7 @@ function vRound(){
 function vGive(){
   const g=S.give,f=g.from,from=S.players[f],can=canAct(f),me=viewIdx();
   const sum=Object.values(g.alloc).reduce((a,b)=>a+b,0),left=g.amount-sum;
-  const rows=S.players.map((q,i)=>{if(i===f)return '';const n=g.alloc[i]||0,mc=i===me?'mine':'';
+  const rows=S.players.map((q,i)=>{if(i===f||q.out)return '';const n=g.alloc[i]||0,mc=i===me?'mine':'';
     return can?`<div class="gr ${mc}"><span class="nm" onclick="A.d(${f},'ga',{t:${i},d:1})">${esc(q.name)}</span><button class="pm" aria-label="min" onclick="A.d(${f},'ga',{t:${i},d:-1})">−</button><span class="gc">${n}</span><button class="pm" aria-label="plus" onclick="A.d(${f},'ga',{t:${i},d:1})">+</button></div>`
     :`<div class="gr ${mc}"><span class="nm">${esc(q.name)}${i===me&&ME.role!=='spec'?' (jij)':''}</span><span class="gc">${n}</span></div>`;}).join('');
   const nxt=S.giveQueue.length?`<p class="q">Hierna: ${esc(S.players[S.giveQueue[0].from].name)}</p>`:'';
@@ -580,7 +602,7 @@ function vGive(){
 
 /* ---------- boom ---------- */
 function vPyr(){
-  const P=S.pyr,rows=P.rows,me=viewIdx(),w=treeSize(rows.map(r=>r.cards.map(x=>x.h))),size=w<40?'sm':'lg',sty=`--w:${w}px`;
+  const P=S.pyr,rows=P.rows,me=viewIdx(),w=Math.max(18,Math.min(treeSize(rows.map(r=>r.cards.map(x=>x.h))),34,Math.floor((250/rows.length-6)/1.4))),size=w<40?'sm':'lg',sty=`--w:${w}px`;
   let tree='';
   for(let ri=rows.length-1;ri>=0;ri--){const row=rows[ri];
     tree+=`<div class="prow"><span class="pval">${row.name?row.name+' '+row.value:row.value}</span><div class="pcards">${row.cards.map((x,ci)=>cardH(x.c,size,x.up,(x.h?'h ':'')+(ri===P.ri&&ci===P.ci?'cur'+(x.up?' flip':''):''),sty)).join('')}</div></div>`;}
@@ -597,7 +619,7 @@ function vPyr(){
     if(ME.role==='host')ctl+=`<button class="b ghost" onclick="A.d(0,'done',${P.k})">Verder${P.taps.length?' (de rest heeft hem gemist)':' (niemand legt)'}</button>`;
   }
   const offline=ME.role==='host'&&P.stage==='lay'?S.players.map((p,i)=>!p.online&&P.m[i]&&!P.taps.includes(i)?`<button class="b ghost" onclick="A.d(${i},'lay',${P.k})">Leg voor ${esc(p.name)} (offline)</button>`:'').join(''):'';
-  return `<div class="panel tree">${tree}</div><div class="panel">${ctl}${offline}</div>${me>=0?myHand():''}${playersStrip([me],{rank:P.stage==='none'&&card?card.c.r:0})}`;
+  return `<div class="panel tree">${tree}</div>${me>=0?myHand(null,null,'lg'):''}<div class="panel">${ctl}${offline}</div>${playersStrip([me],{rank:P.stage==='none'&&card?card.c.r:0})}`;
 }
 
 /* ---------- gelijkspel ---------- */
@@ -650,7 +672,7 @@ function vBus(){
   }else if(B.result.type==='wrong'){
     ctl=`<div class="res bad">Fout! ${esc(r.name)} drinkt ${sl(B.result.take)}</div>`+(can?`<button class="b main" onclick="A.d(${ri},'reset')">Terug naar ${B.cp?'de halte':'het begin'}</button>`:'');
   }else{
-    ctl=`<div class="res mid">Zelfde kaart! ${esc(r.name)} wijst iemand aan</div>`+(can?S.players.map((p,i)=>i===ri?'':`<button class="b" onclick="A.d(${ri},'swap',${i})">${esc(p.name)} gaat de bus in</button>`).join(''):`<p class="wait">${esc(r.name)} kiest een slachtoffer…</p>`);
+    ctl=`<div class="res mid">Zelfde kaart! ${esc(r.name)} wijst iemand aan</div>`+(can?S.players.map((p,i)=>i===ri||p.out?'':`<button class="b" onclick="A.d(${ri},'swap',${i})">${esc(p.name)} gaat de bus in</button>`).join(''):`<p class="wait">${esc(r.name)} kiest een slachtoffer…</p>`);
   }
   const head=ri===myIdx()&&ME.role!=='spec'?'Jij zit in de bus':`${esc(r.name)} zit in de bus`;
   return `<div class="panel"><h2>${head}</h2>${can&&ri!==myIdx()?forNote(ri):''}<div class="bus">${row}</div>${ctl}</div>`;
@@ -661,9 +683,12 @@ function vScore(){
   const ps=S.players.map(p=>p).sort((a,b)=>b.taken-a.taken);
   return `<table><thead><tr><th>Speler</th><th class="n">Gedronken</th><th class="n">Uitgedeeld</th></tr></thead><tbody>${ps.map(p=>`<tr><td><i class="dot ${p.online?'':'off'}"></i>${esc(p.name)}</td><td class="n">${p.taken}</td><td class="n">${p.given}</td></tr>`).join('')}</tbody></table>${ME.role==='host'&&S.specN?`<p class="note">${S.specN} meekijker${S.specN===1?'':'s'}</p>`:''}`;
 }
+function vNewRider(){
+  return `<div class="panel"><h2>De bus is leeg</h2><p class="q">Wie in de bus zat is te lang weg geweest. De host kiest wie de bus in gaat.</p>
+  ${ME.role==='host'?S.players.map((p,i)=>p.out?'':`<button class="b" onclick="A.d(0,'rider',${i})">${esc(p.name)} gaat de bus in</button>`).join(''):'<p class="wait">Wachten op de host…</p>'}</div>`;}
 function vEnd(){
-  const ps=S.players,mt=ps.reduce((a,b)=>b.taken>a.taken?b:a),mg=ps.reduce((a,b)=>b.given>a.given?b:a);
-  return `<div class="logo"><h1 style="font-size:40px">${esc(S.players[S.bus.rider].name)} is uit de bus</h1></div>
+  const ps=S.players.filter(p=>!p.out).length?S.players:S.players,mt=ps.reduce((a,b)=>b.taken>a.taken?b:a),mg=ps.reduce((a,b)=>b.given>a.given?b:a);
+  return `<div class="logo"><h1 style="font-size:40px">${S.endWhy?esc(S.endWhy):esc(S.players[S.bus.rider].name)+' is uit de bus'}</h1></div>
   <div class="awards"><div class="award"><b>Grootste zuiper:</b> ${esc(mt.name)} (${sl(mt.taken)})</div><div class="award"><b>Meest uitgedeeld:</b> ${esc(mg.name)} (${sl(mg.given)})</div></div>
   <div class="panel">${vScore()}</div>
   ${ME.role==='host'?`<button class="b main" onclick="A.d(0,'again')">Nog een potje, zelfde spelers</button><button class="b ghost" onclick="A.toLobby()">Terug naar de wachtkamer</button>`:'<p class="wait">De host kan een nieuw potje starten.</p>'}`;
@@ -679,7 +704,7 @@ function render(){
     if(UI.screen==='home'||!ME.role)h=vHome();
     else if(UI.screen==='watchpick')h=vWatchPick();
     else if(!S)h='<p class="wait">Verbinden…</p>';
-    else{const V={lobby:vLobby,round:vRound,give:vGive,pyr:vPyr,tb:vTb,bs:vBs,bus:vBus,end:vEnd};h=vTop()+(V[S.phase]||vLobby)()+(UI.modal?vModal():'');}
+    else{const V={lobby:vLobby,round:vRound,give:vGive,pyr:vPyr,tb:vTb,bs:vBs,bus:vBus,end:vEnd,newrider:vNewRider};h=vTop()+(V[S.phase]||vLobby)()+(UI.modal?vModal():'');}
   }catch(e){h=`<div class="panel"><p class="err">Er ging iets mis bij het tonen (${esc(e.message)}).</p></div>`;}
   const ae=document.activeElement,keep=ae&&ae.id&&(ae.id==='nm'||ae.id==='cd')?{id:ae.id,s:ae.selectionStart}:null;
   $app.innerHTML=h;
