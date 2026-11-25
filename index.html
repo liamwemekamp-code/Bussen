@@ -14,7 +14,7 @@
    COLOUR and TYPE: vilt groen, kaart wit, rood/zwart, accent goud; Rubik zwaar
    LAYOUT: één kolom, actieknoppen binnen duimbereik */
 :root{color-scheme:dark;--felt:#0f4a35;--felt2:#0a2f22;--gold:#ffcf4d;--ink:#f6f2e7;--red:#d62839;--cardred:#cf1f2f}
-*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box;min-width:0;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
 html{background:var(--felt2)}
 html,body{margin:0;min-height:100%}
 body{background:radial-gradient(120% 60vh at 50% 0%,#1a6b4c 0%,var(--felt) 60%,var(--felt2) 100%) no-repeat,var(--felt2);color:var(--ink);font:16px/1.45 Rubik,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;min-height:100dvh;overflow-x:clip;user-select:none;-webkit-user-select:none}
@@ -62,7 +62,7 @@ h3{font-size:15px;margin:0 0 6px;opacity:.8;font-weight:700}
 .card.hit{box-shadow:0 0 0 3px var(--gold),0 3px 8px rgba(0,0,0,.4)}
 .card.dim{opacity:.4}
 .card.tap{cursor:pointer}
-.card.h{width:calc(var(--w)*1.4);height:var(--w)}
+.card.h,.card.hs{width:calc(var(--w)*1.4);height:var(--w)}
 .card .x2{position:absolute;top:-7px;right:-6px;background:var(--gold);color:#141414;font-size:10px;font-weight:900;border-radius:999px;padding:2px 5px;line-height:1}
 .card .tag{position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:11px;white-space:nowrap;color:var(--gold);font-weight:700}
 @keyframes fl{from{transform:rotateY(90deg)}to{transform:none}}
@@ -97,7 +97,7 @@ h3{font-size:15px;margin:0 0 6px;opacity:.8;font-weight:700}
 .left{font-size:15px;font-weight:700;color:var(--gold)}
 .tapb{position:relative}
 .badge{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:#141414;color:var(--gold);border-radius:999px;padding:3px 11px;font-size:14px}
-.bus{display:flex;flex-wrap:wrap;gap:8px 6px;justify-content:center;align-items:center;padding:8px 0 18px}
+.bus{display:flex;flex-wrap:wrap;gap:22px 6px;justify-content:center;align-items:center;padding:8px 0 18px}
 .stop{display:flex;flex-direction:column;align-items:center;font-size:10px;font-weight:700;color:var(--gold);width:22px}
 .stop i{display:block;width:4px;height:36px;background:var(--gold);border-radius:2px}
 .stop.done i{background:#1f8a70}
@@ -208,7 +208,7 @@ const Net=(()=>{
     peer=new Peer(PREFIX+code,{config:ICE,debug:0});
     let opened=false;
     peer.on('open',()=>{opened=true;cb(null);});
-    peer.on('error',e=>{if(!opened){cb(e.type||'error');}else{UI.conn='Verbindingsprobleem ('+(e.type||'?')+')';render();}});
+    peer.on('error',e=>{if(!opened){cb(e.type||'error');}else{UI.conn='Jij (host) hebt verbindingsproblemen ('+(e.type||'?')+'). Check je internet.';render();}});
     peer.on('disconnected',()=>{setTimeout(()=>{try{peer&&!peer.destroyed&&peer.reconnect();}catch(e){}},1000);});
     peer.on('connection',c=>{
       c.on('open',()=>{conns[c.peer]=c;h.open(c.peer);});
@@ -273,7 +273,7 @@ function hostCreate(resume){
 function hostOpen(cid){CONN[cid]={pid:null,last:Date.now()};}
 function hostClose(cid){const c=CONN[cid];delete CONN[cid];if(!c||!S)return;
   const p=S.players.find(x=>x.pid===c.pid);
-  if(p&&!Object.values(CONN).some(o=>o.pid===c.pid)){if(S.phase==='lobby'){S.players=S.players.filter(x=>x!==p);ev(p.name+' is weg');}else{p.online=false;ev(p.name+' is offline');}}
+  if(p&&!Object.values(CONN).some(o=>o.pid===c.pid)){if(S.phase==='lobby'){S.players=S.players.filter(x=>x!==p);ev(p.name+' is weg');}else{p.online=false;ev(p.name+' is de verbinding kwijt');}}
   if(c.spec)S.specN=Math.max(0,(S.specN||0)-1);
   push();}
 function hostMsg(cid,m){
@@ -292,7 +292,7 @@ function hostMsg(cid,m){
 }
 setInterval(()=>{if(ME.role!=='host'||!S)return;const now=Date.now();let ch=false;
   for(const cid in CONN){const c=CONN[cid];if(now-c.last>16000){const p=S.players.find(x=>x.pid===c.pid);delete CONN[cid];
-    if(p&&!Object.values(CONN).some(o=>o.pid===c.pid)){if(S.phase==='lobby'){S.players=S.players.filter(x=>x!==p);}else p.online=false;ch=true;}}}
+    if(p&&!Object.values(CONN).some(o=>o.pid===c.pid)){if(S.phase==='lobby'){S.players=S.players.filter(x=>x!==p);}else{p.online=false;ev(p.name+' is de verbinding kwijt');}ch=true;}}}
   if(ch)push();},5000);
 
 /* ---------- spelregels (alleen host) ---------- */
@@ -303,9 +303,9 @@ function act(i,a,v){
     case 'round':if(i!==S.turn)return;if(a==='guess'&&!S.reveal)guess(v);else if(a==='next'&&S.reveal)after();else return;break;
     case 'give':if(i!==S.give.from)return;if(a==='ga')ga(v);else if(a==='ok'){if(!gOk())return;}else return;break;
     case 'pyr':{const Py=S.pyr;
-      if(a==='flip'&&Py.stage==='ready'&&v===Py.k)flip();
+      if(a==='flip'&&i===0&&Py.stage==='ready'&&v===Py.k)flip();
       else if(a==='lay'&&Py.stage==='lay'&&v===Py.k)lay(i);
-      else if(a==='next'&&Py.stage==='none'&&v===Py.k)nextPyr();
+      else if(a==='next'&&i===0&&Py.stage==='none'&&v===Py.k)nextPyr();
       else if(a==='done'&&Py.stage==='lay'&&i===0&&v===Py.k)layDone();
       else return;break;}
     case 'tb':if(a==='pick'&&!S.tb.done&&S.tb.cands[S.tb.turn]===i)tbPick(v);else if(a==='next'&&S.tb.done&&(S.tb.lose.includes(i)||i===0))tbNext();else return;break;
@@ -392,7 +392,7 @@ function bsPick(k){const B=S.bs,x=B.cards[k|0];if(!x||x.up||B.step>1)return;x.up
   if(B.step===0){B.len=cnt(x.c.r);B.step=1;}else{B.open=Math.min(cnt(x.c.r),B.len);B.step=2;}}
 function board(){const B=S.bs,L=B.len;const cards=Array.from({length:L},()=>({c:draw(),open:false,seen:false}));
   shuffle([...Array(L).keys()]).slice(0,B.open).forEach(i=>cards[i].open=true);
-  const stops=[];for(let s=4;s<L;s+=4)stops.push(s);
+  const stops=L>=13?[5,9]:L>=2?[Math.ceil(L/2)]:[];
   S.bus={rider:S.rider,start:draw(),cards,stops,pos:0,cp:0,result:null};S.phase='bus';}
 function busGuess(v){const B=S.bus,r=S.players[B.rider];if(v!=='hi'&&v!=='lo')return;const cur=B.pos===0?B.start:B.cards[B.pos-1].c,nx=B.cards[B.pos];nx.seen=true;
   if(nx.c.r===cur.r){B.result={type:'swap'};ev(`Zelfde kaart! ${r.name} mag iemand anders de bus in sturen`);return;}
@@ -414,12 +414,12 @@ function clientJoin(code,autoHost){
   Net.join(code,{
     open(){ME.code=code;Net.csend({t:'hello',pid:ME.pid,name:ME.name});lastPong=Date.now();startPing();},
     msg(m){clientMsg(m);},
-    close(){UI.conn='Verbinding kwijt, opnieuw verbinden…';render();scheduleRejoin();},
-    fail(r){UI.busy=false;if(autoHost&&r==='notfound'&&!S&&!ME.role){hostCreate(null);return;}if(ME.code&&S){UI.conn='Verbinding kwijt, opnieuw verbinden…';render();scheduleRejoin();return;}UI.err=netErr(r);render();}
+    close(){UI.conn='Jij bent de verbinding met de host kwijt. Opnieuw verbinden… (Ziet iedereen dit? Dan ligt het aan de host.)';render();scheduleRejoin();},
+    fail(r){UI.busy=false;if(autoHost&&r==='notfound'&&!S&&!ME.role){hostCreate(null);return;}if(ME.code&&S){UI.conn='Jij bent de verbinding met de host kwijt. Opnieuw verbinden… (Ziet iedereen dit? Dan ligt het aan de host.)';render();scheduleRejoin();return;}UI.err=netErr(r);render();}
   });
 }
 function scheduleRejoin(){clearTimeout(rejoinT);rejoinT=setTimeout(()=>{if(ME.role&&ME.role!=='host'&&ME.code)clientJoin(ME.code);},3000);}
-function startPing(){clearInterval(pingT);pingT=setInterval(()=>{Net.csend({t:'ping'});if(Date.now()-lastPong>14000&&ME.code){UI.conn='Verbinding kwijt, opnieuw verbinden…';render();clientJoin(ME.code);}},4000);}
+function startPing(){clearInterval(pingT);pingT=setInterval(()=>{Net.csend({t:'ping'});if(Date.now()-lastPong>14000&&ME.code){UI.conn='Jij bent de verbinding met de host kwijt. Opnieuw verbinden… (Ziet iedereen dit? Dan ligt het aan de host.)';render();clientJoin(ME.code);}},4000);}
 function clientMsg(m){
   if(!m||typeof m!=='object')return;
   if(m.t==='pong'){lastPong=Date.now();if(UI.conn){UI.conn='';render();}return;}
@@ -453,9 +453,11 @@ function afterState(){
 
 /* ================= SCHERMEN ================= */
 function phaseLabel(){return{lobby:'Wachtkamer',round:`Ronde ${S.round} van 4`,give:'Slokken uitdelen',pyr:'De boom',tb:'Wie moet de bus in?',bs:'Bus klaarzetten',bus:'In de bus',end:'Klaar'}[S.phase]||'';}
+function offWarn(){const off=S.players.filter(p=>!p.online).map(p=>p.name);if(!off.length||S.phase==='lobby')return '';
+  return `<div class="warn">${esc(off.join(', '))} ${off.length>1?'hebben':'heeft'} geen verbinding meer. ${ME.role==='host'?'Jij kunt zolang voor ze spelen.':'De host kan zolang voor ze spelen.'}</div>`;}
 function vTop(){
   const spec=ME.role==='spec'?`<br>Meekijken met <b style="font-size:13px;letter-spacing:0">${esc(S.players[ME.watch]?S.players[ME.watch].name:'')}</b>`:'';
-  return `<div class="top"><b>BUSSEN</b><span>${phaseLabel()}${spec}</span>${ME.role==='spec'?`<button class="ico" onclick="A.pickWatch()">Wissel</button>`:''}<button class="ico" onclick="A.menu()">Stand</button></div>${UI.conn?`<div class="warn">${esc(UI.conn)}</div>`:''}`;
+  return `<div class="top"><b>BUSSEN</b><span>${phaseLabel()}${spec}</span>${ME.role==='spec'?`<button class="ico" onclick="A.pickWatch()">Wissel</button>`:''}<button class="ico" onclick="A.menu()">Stand</button></div>${UI.conn?`<div class="warn">${esc(UI.conn)}</div>`:''}${offWarn()}`;
 }
 function playersStrip(skip,opts){
   opts=opts||{};const me=viewIdx();
@@ -585,8 +587,8 @@ function vPyr(){
   const row=rows[P.ri],card=row&&row.cards[P.ci],worth=card?row.value*(card.h?2:1):0;
   const isPlayer=ME.role!=='spec'&&myIdx()>=0;
   let ctl='';
-  if(P.stage==='ready')ctl=`<p class="q">${row.name?'De '+row.name:'Rij van '+sl(row.value)}${card.h?', liggend dus dubbel':''}: ${sl(worth)} uitdelen per kaart</p>`+(isPlayer?`<button class="b main" onclick="A.d(${myIdx()},'flip',${P.k})">Draai kaart om</button>`:'<p class="wait">Wachten tot iemand de kaart omdraait…</p>');
-  if(P.stage==='none')ctl=`<div class="res mid">Niemand heeft een ${lab(card.c.r)}</div>`+(isPlayer?`<button class="b main" onclick="A.d(${myIdx()},'next',${P.k})">Volgende kaart</button>`:'');
+  if(P.stage==='ready')ctl=`<p class="q">${row.name?'De '+row.name:'Rij van '+sl(row.value)}${card.h?', liggend dus dubbel':''}: ${sl(worth)} uitdelen per kaart</p>`+(ME.role==='host'?`<button class="b main" onclick="A.d(0,'flip',${P.k})">Draai kaart om</button>`:`<p class="wait">Wachten tot ${esc(S.players[0].name)} (host) de kaart omdraait…</p>`);
+  if(P.stage==='none')ctl=`<div class="res mid">Niemand heeft een ${lab(card.c.r)}</div>`+(ME.role==='host'?`<button class="b main" onclick="A.d(0,'next',${P.k})">Volgende kaart</button>`:`<p class="wait">Wachten op de host…</p>`);
   if(P.stage==='lay'||P.stage==='done'){
     const mi=myIdx(),k=P.taps.indexOf(mi),laid=P.taps.map((i,n)=>`#${n+1} ${esc(S.players[i].name)}`).join(' · ');
     ctl=`<h2>Wie heeft een ${lab(card.c.r)}?</h2><p class="q">Per kaart ${sl(worth)}. Zonder kaart drukken = 1 slok.</p>`;
@@ -636,13 +638,14 @@ function vBus(){
     const p=i+1,vis=x.open||x.seen;
     let cls=p===B.pos?'cur':p<B.pos?'passed':'';
     if(p===B.pos+1&&!B.result)cls+=' hit';
-    row+=vis?cardH(x.c,size,true,cls):backT(size,cls);
-    if(B.stops.includes(p)&&p<L)row+=`<span class="stop ${B.cp>=p?'done':''}"><i></i>halte</span>`;
+    const st=B.stops.includes(p);if(st)cls+=' hs';
+    const card=vis?cardH(x.c,size,true,cls):backT(size,cls);
+    row+=st?`<div style="position:relative">${card}<span class="tag" style="position:absolute;bottom:-17px;left:50%;transform:translateX(-50%);font-size:11px;color:${B.cp>=p?'#2ecc71':'var(--gold)'};font-weight:700;white-space:nowrap">${B.cp>=p?'halte ✓':'halte'}</span></div>`:card;
   });
   const cur=B.pos===0?B.start:B.cards[B.pos-1].c;
   let ctl='';
   if(!B.result){
-    ctl=`<p class="q">Kaart ${B.pos+1} van ${L}. ${B.cp?`Checkpoint bij kaart ${B.cp}.`:'Nog geen halte gehaald.'}</p><h2>Hoger of lager dan ${lab(cur.r)}${cur.s}?</h2>`+
+    ctl=`<p class="q">Kaart ${B.pos+1} van ${L}. ${B.cp?`Halte gehaald bij kaart ${B.cp}, daar ga je niet meer voor terug.`:B.stops.length?`Liggende kaart = halte (kaart ${B.stops.join(' en ')}).`:'Deze bus heeft geen halte.'}</p><h2>Hoger of lager dan ${lab(cur.r)}${cur.s}?</h2>`+
       (can?`<div class="row2"><button class="b" onclick="A.d(${ri},'guess','hi')">Hoger</button><button class="b" onclick="A.d(${ri},'guess','lo')">Lager</button></div>`:`<p class="wait">${esc(r.name)} denkt na…</p>`);
   }else if(B.result.type==='wrong'){
     ctl=`<div class="res bad">Fout! ${esc(r.name)} drinkt ${sl(B.result.take)}</div>`+(can?`<button class="b main" onclick="A.d(${ri},'reset')">Terug naar ${B.cp?'de halte':'het begin'}</button>`:'');
@@ -707,6 +710,8 @@ const A={
   quit(){UI.modal=null;if(ME.role==='host'){Net.broadcast({t:'ended'});lsSet('bussen_host',null);setTimeout(()=>A.home(),200);}else A.leave();}
 };
 window.A=A;
+document.addEventListener('dblclick',e=>e.preventDefault(),{passive:false});
+let lastTouch=0;document.addEventListener('touchend',e=>{const n=Date.now();if(n-lastTouch<350&&e.target.closest('button')){e.preventDefault();e.target.closest('button').click();}lastTouch=n;},{passive:false});
 let wake=null;document.addEventListener('click',()=>{if(wake||!ME.role)return;try{navigator.wakeLock&&navigator.wakeLock.request('screen').then(w=>{wake=w;w.addEventListener('release',()=>{wake=null;});}).catch(()=>{});}catch(e){}},true);
 if(LOCAL)window.__dbg={get S(){return S;},ME,myIdx,canAct,A,UI};
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ME.role&&ME.role!=='host'&&ME.code&&!Net.isConn())clientJoin(ME.code);});
