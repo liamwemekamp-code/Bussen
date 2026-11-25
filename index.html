@@ -392,7 +392,7 @@ function bsPick(k){const B=S.bs,x=B.cards[k|0];if(!x||x.up||B.step>1)return;x.up
   if(B.step===0){B.len=cnt(x.c.r);B.step=1;}else{B.open=Math.min(cnt(x.c.r),B.len);B.step=2;}}
 function board(){const B=S.bs,L=B.len;const cards=Array.from({length:L},()=>({c:draw(),open:false,seen:false}));
   shuffle([...Array(L).keys()]).slice(0,B.open).forEach(i=>cards[i].open=true);
-  const stops=L>=13?[5,9]:L>=2?[Math.ceil(L/2)]:[];
+  const stops=L>=13?[5,9]:L>=8?[Math.ceil(L/2)]:[];
   S.bus={rider:S.rider,start:draw(),cards,stops,pos:0,cp:0,result:null};S.phase='bus';}
 function busGuess(v){const B=S.bus,r=S.players[B.rider];if(v!=='hi'&&v!=='lo')return;const cur=B.pos===0?B.start:B.cards[B.pos-1].c,nx=B.cards[B.pos];nx.seen=true;
   if(nx.c.r===cur.r){B.result={type:'swap'};ev(`Zelfde kaart! ${r.name} mag iemand anders de bus in sturen`);return;}
