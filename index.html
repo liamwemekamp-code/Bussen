@@ -173,7 +173,7 @@ function lsGet(k){try{return localStorage.getItem(k);}catch(e){return null;}}
 function lsSet(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v);}catch(e){}}
 function rnd(n){try{const a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]%n;}catch(e){return Math.floor(Math.random()*n);}}
 function shuffle(a){for(let i=a.length-1;i>0;i--){const j=rnd(i+1);[a[i],a[j]]=[a[j],a[i]];}return a;}
-function newDeck(){const d=[];for(let k=0;k<2;k++)for(const s of SUITS)for(let r=2;r<=14;r++)d.push({r,s});return shuffle(d);}
+function newDeck(n){n=n===1?1:2;const d=[];for(let k=0;k<n;k++)for(const s of SUITS)for(let r=2;r<=14;r++)d.push({r,s});return shuffle(d);}
 function buzz(ms){try{navigator.vibrate&&navigator.vibrate(ms||180);}catch(e){}}
 function toast(t,mine){const box=document.getElementById('toasts');const el=document.createElement('div');el.className='toast'+(mine?' mine':'');el.textContent=t;box.appendChild(el);while(box.children.length>2)box.firstChild.remove();setTimeout(()=>el.remove(),mine?4200:3000);}
 
@@ -186,7 +186,7 @@ const UI={screen:'home',err:'',conn:'',modal:null,lastEv:-1,busy:false,code:CODE
 function parseRows(str){const p=String(str).split(/[^0-9]+/).filter(Boolean).map(Number);const n=p.length;
   if(n<2||n>8||p[n-1]!==1||p[n-2]!==2||p.slice(0,-1).some(x=>x<2||x>8))return null;return p;}
 function parseShape(st){const mid=parseRows(st&&st.rows);if(!mid)return null;return{stem:(st.trunk||[10]).length,peaks:(st.peak||[15]).length,mid};}
-function defSetup(){return{rows:'4-3-2-1',trunk:[10],peak:[15],orient:null,busPen:'one'};}
+function defSetup(){return{rows:'4-3-2-1',trunk:[10],peak:[15],orient:null,busPen:'one',decks:2};}
 function defOrient(p){return p.mid.map(n=>Array.from({length:n},(_,i)=>i%2===0?'h':'v'));}
 function getOrient(st,p){const o=st.orient,mid=p.mid;if(o&&o.length===mid.length&&o.every((r,i)=>r.length===mid[i]))return o;st.orient=defOrient(p);return st.orient;}
 function treeSize(rows){const maxU=Math.max(...rows.map(r=>r.reduce((a,h)=>a+(h?1.4:1),0))),maxN=Math.max(...rows.map(r=>r.length));return Math.max(20,Math.min(58,Math.floor((300-6*(maxN-1))/maxU)));}
@@ -255,7 +255,7 @@ const Net=(()=>{
 /* ================= HOST ================= */
 const CONN={};   /* connId -> {pid,last} */
 function newPlayer(id,name){return{pid:id,name:clean(name)||'Speler',hand:[],taken:0,given:0,online:true};}
-function draw(){if(!S.deck.length){S.deck=newDeck();ev('Nieuwe stapel kaarten geschud');}return S.deck.pop();}
+function draw(){if(!S.deck.length){S.deck=newDeck(S.setup.decks);ev('Stapel is op: nieuwe kaarten geschud',[],true);}return S.deck.pop();}
 function ev(txt,to,big){S.evN=(S.evN||0)+1;S.ev=(S.ev||[]).concat([{n:S.evN,txt,to:to||[],big:!!big}]).slice(-12);}
 function pub(){const o=Object.assign({},S);delete o.deck;o.deckN=S.deck?S.deck.length:0;o.now=Date.now();return o;}
 function setOn(p,v){if(!p)return;p.online=v;if(v)delete p.offAt;else if(!p.offAt)p.offAt=Date.now();}
@@ -273,7 +273,7 @@ function hostCreate(resume){
       if(err==='unavailable-id'&&!resume){UI.busy=false;clientJoin(CODE,false);return;}
       if(err){UI.busy=false;UI.err=netErr(err);render();return;}
       ME.code=code;ME.role='host';UI.busy=false;UI.conn='';
-      if(resume){S=resume.S;if(!S.setup||!S.setup.rows||!Array.isArray(S.setup.trunk))S.setup=defSetup();S.players.forEach((p,i)=>{delete p.offAt;setOn(p,i===0);});}
+      if(resume){S=resume.S;if(!S.setup||!S.setup.rows||!Array.isArray(S.setup.trunk))S.setup=defSetup();if(!S.setup.decks)S.setup.decks=2;S.players.forEach((p,i)=>{delete p.offAt;setOn(p,i===0);});}
       else{S={phase:'lobby',setup:defSetup(),players:[newPlayer(ME.pid,ME.name)],deck:[],ev:[],evN:0,seq:0,specN:0};}
       UI.screen='game';history.replaceState(null,'',HERE());
       UI.lastEv=S.evN||0;push();
@@ -314,7 +314,7 @@ function kickOut(i){const p=S.players[i];if(!p||p.out)return;p.out=true;p.online
   switch(S.phase){
     case 'round':if(S.turn===i){S.reveal=null;nextTurn();}break;
     case 'give':{const g=S.give;delete g.alloc[i];S.giveQueue=S.giveQueue.filter(q=>q.from!==i);if(g.from===i){S.give=null;giveDone();}break;}
-    case 'pyr':{const P=S.pyr;if(P.stage==='lay'){delete P.m[i];P.taps=P.taps.filter(x=>x!==i);const need=Object.keys(P.m).length;if(!need)P.stage='none';else if(P.taps.length===need)layDone();}break;}
+    case 'pyr':{const P=S.pyr;if(P.stage==='lay'){delete P.m[i];P.taps=P.taps.filter(x=>x!==i);P.kept=(P.kept||[]).filter(x=>x!==i);if(!Object.keys(P.m).length)P.stage='none';else layCheck();}break;}
     case 'tb':{const T=S.tb;if(T.cands.includes(i)){const c=T.cands.filter(x=>x!==i);if(c.length===1){S.busWhy='De rest van het gelijkspel is weg.';startBs(c[0]);}else startTb(c,T.n);}break;}
     case 'bs':if(S.rider===i)S.phase='newrider';break;
     case 'bus':if(S.bus.rider===i)S.phase='newrider';break;
@@ -330,7 +330,8 @@ function act(i,a,v){
     case 'give':if(i!==S.give.from)return;if(a==='ga')ga(v);else if(a==='ok'){if(!gOk())return;}else return;break;
     case 'pyr':{const Py=S.pyr;
       if(a==='flip'&&i===0&&Py.stage==='ready'&&v===Py.k)flip();
-      else if(a==='lay'&&Py.stage==='lay'&&v===Py.k)lay(i);
+      else if(a==='lay'&&Py.stage==='lay'&&v===Py.k)lay(i,false);
+      else if(a==='keep'&&Py.stage==='lay'&&v===Py.k)lay(i,true);
       else if(a==='next'&&i===0&&Py.stage==='none'&&v===Py.k)nextPyr();
       else if(a==='done'&&Py.stage==='lay'&&i===0&&v===Py.k)layDone();
       else return;break;}
@@ -349,7 +350,7 @@ function act(i,a,v){
 }
 function startGame(){
   S.players=S.players.filter(p=>!p.out);S.endWhy='';S.players.forEach(p=>{p.hand=[];p.taken=0;p.given=0;});
-  S.deck=newDeck();S.round=1;S.turn=0;S.reveal=null;S.giveQueue=[];S.give=null;S.pyr=null;S.tb=null;S.bs=null;S.bus=null;S.busWhy='';
+  S.deck=newDeck(S.setup.decks);S.round=1;S.turn=0;S.reveal=null;S.giveQueue=[];S.give=null;S.pyr=null;S.tb=null;S.bs=null;S.bus=null;S.busWhy='';
   S.phase='round';ev('Het spel begint! '+S.players[0].name+' mag beginnen');
 }
 function nextTurn(){do{S.turn++;if(S.turn>=S.players.length){S.turn=0;S.round++;}}while(S.round<=4&&S.players[S.turn].out);if(S.round>4){startPyr();return;}S.phase='round';}
@@ -387,14 +388,16 @@ function startPyr(){
   const rows=[];S.setup.trunk.forEach(v=>rows.push({value:v,name:'stam',cards:mk(1)}));
   o.forEach((r,i)=>rows.push({value:i+1,cards:mk(r.length,r)}));
   S.setup.peak.forEach(v=>rows.push({value:v,name:'piek',cards:mk(1)}));
-  S.pyr={rows,ri:0,ci:0,k:0,stage:'ready',m:{},taps:[],wrong:[]};S.phase='pyr';ev('Op naar de boom!');
+  S.pyr={rows,ri:0,ci:0,k:0,stage:'ready',m:{},taps:[],wrong:[],kept:[]};S.phase='pyr';ev('Op naar de boom!');
 }
 function flip(){const P=S.pyr,x=P.rows[P.ri].cards[P.ci];x.up=true;const m={};
   S.players.forEach((p,i)=>{if(p.out)return;const n=p.hand.filter(c=>c.r===x.c.r).length;if(n)m[i]=n;});
-  P.m=m;P.taps=[];P.wrong=[];P.stage=Object.keys(m).length?'lay':'none';}
-function lay(i){const P=S.pyr;if(P.taps.includes(i))return;
-  if(!P.m[i]){if(P.wrong.includes(i))return;P.wrong.push(i);S.players[i].taken+=1;ev(S.players[i].name+' heeft er geen! 1 slok',[i]);return;}
-  P.taps.push(i);if(P.taps.length===Object.keys(P.m).length)layDone();}
+  P.m=m;P.taps=[];P.wrong=[];P.kept=[];P.stage=Object.keys(m).length?'lay':'none';}
+function lay(i,keep){const P=S.pyr;P.kept=P.kept||[];if(P.taps.includes(i)||P.kept.includes(i))return;
+  if(!P.m[i]){if(P.wrong.includes(i))return;P.wrong.push(i);S.players[i].taken+=1;ev(S.players[i].name+(keep?' wil houden maar heeft er geen! 1 slok':' heeft er geen! 1 slok'),[i]);return;}
+  if(keep){P.kept.push(i);ev(S.players[i].name+' houdt de kaart en gokt op later');}else P.taps.push(i);
+  layCheck();}
+function layCheck(){const P=S.pyr,need=Object.keys(P.m).length;if(P.taps.length+(P.kept||[]).length>=need){if(P.taps.length)layDone();else{P.stage='done';nextPyr();}}}
 function layDone(){const P=S.pyr,row=P.rows[P.ri],pc=row.cards[P.ci],card=pc.c,worth=row.value*(pc.h?2:1),q=[],nT=P.taps.length;
   P.taps.slice().reverse().forEach((i,k)=>{const n=P.m[i];let rem=n;
     S.players[i].hand=S.players[i].hand.filter(c=>{if(rem>0&&c.r===card.r){rem--;return false;}return true;});
@@ -556,6 +559,8 @@ function shapePreview(st,edit){
   for(let k=st.trunk.length-1;k>=0;k--)h+=`<div class="r"><span class="v">stam ${st.trunk[k]}</span>${one}</div>`;
   return `<div class="tp">${h}</div>`;
 }
+function deckWarn(st){const p=parseShape(st);if(!p)return '';const need=S.players.length*4+p.stem+p.peaks+p.mid.reduce((a,b)=>a+b,0);const tot=(st.decks||2)*52;
+  return need>tot-12?` Let op: met ${S.players.length} spelers en deze boom gaan er al ${need} kaarten uit. Raakt de stapel op, dan wordt er opnieuw geschud.`:'';}
 function valChips(key,arr,opts,dis){return arr.map((v,k)=>`<div class="lbl">${arr.length>1?(key==='trunk'?(k===0?'Onderste stamkaart':'Bovenste stamkaart'):(k===0?'Eerste piek':'Tweede piek (bovenaan)')):(key==='trunk'?'Stam is waard':'Piek is waard')}</div><div class="chips">${opts.map(o=>`<button class="chip ${v===o?'on':''}" ${dis} onclick="A.setV('${key}',${k},${o})">${o}</button>`).join('')}</div>`).join('');}
 function vLobby(){
   const st=S.setup,host=ME.role==='host',url=location.origin+location.pathname;
@@ -576,14 +581,16 @@ function vLobby(){
   ${valChips('trunk',st.trunk,[10,15,20,25],dis)}
   <div class="lbl">Piek</div><div class="chips">${[1,2].map(n=>`<button class="chip ${st.peak.length===n?'on':''}" ${dis} onclick="A.setN('peak',${n})">${n} piek${n>1?'en':''}</button>`).join('')}</div>
   ${valChips('peak',st.peak,[10,15,20,25],dis)}
+  <div class="lbl">Pakken kaarten</div><div class="chips">${[1,2].map(n=>`<button class="chip ${(st.decks||2)===n?'on':''}" ${dis} onclick="A.set('decks',${n})">${n} pak${n>1?'ken':''}</button>`).join('')}</div>
+  <p class="q" style="margin-top:6px">${(st.decks||2)===1?'52 kaarten: elke waarde zit er 4 keer in, elke kaart maar 1 keer.':'104 kaarten: elke waarde zit er 8 keer in, elke kaart 2 keer.'}${deckWarn(st)}</p>
   <div class="lbl">Fout in de bus kost</div><div class="chips"><button class="chip ${st.busPen==='one'?'on':''}" ${dis} onclick="A.set('busPen','one')">1 slok</button><button class="chip ${st.busPen==='steps'?'on':''}" ${dis} onclick="A.set('busPen','steps')">Slok per kaart ver</button></div>
   </div>${rulesBox()}`;
 }
 function rulesBox(){return `<details><summary>Spelregels in het kort</summary><ul>
-  <li>2 pakken kaarten zonder jokers, volledig random geschud. Aas is hoog.</li>
+  <li>1 of 2 pakken kaarten zonder jokers, volledig random geschud. Aas is hoog.</li>
   <li>Ronde 1: rood of zwart. Ronde 2: hoger of lager dan je 1e kaart. Ronde 3: tussen je eerste twee kaarten of erbuiten. Ronde 4: heb je het symbool al of niet. Fout = 1 slok, gelijke waarde = ook fout.</li>
   <li>Regenboog (3 verschillende symbolen), Ginger (3 rood) of Blackout (3 zwart): goed = 3 uitdelen, fout = 3 nemen.</li>
-  <li>De boom: eerst de stam (1 of 2 kaarten), dan de rijen (1, 2, 3… slokken per kaart, liggend dubbel, eindigend op 2 en 1), als laatste de piek (1 of 2). Heb je dezelfde waarde, druk dan zo snel mogelijk op je eigen telefoon. Langzaamste deelt eerst uit, snelste als laatste. Drukken zonder kaart = 1 slok.</li>
+  <li>De boom: eerst de stam (1 of 2 kaarten), dan de rijen (1, 2, 3… slokken per kaart, liggend dubbel, eindigend op 2 en 1), als laatste de piek (1 of 2). Heb je dezelfde waarde, druk dan zo snel mogelijk op je eigen telefoon. Langzaamste deelt eerst uit, snelste als laatste. Drukken zonder kaart = 1 slok. Je mag je kaart ook houden en gokken dat hij hoger in de boom terugkomt.</li>
   <li>Meeste kaarten over = de bus in. Gelijkspel: blind een kaart kiezen, laagste gaat. Wie klaar is ziet de kaarten open.</li>
   <li>Bus: 1e gekozen kaart = aantal kaarten, 2e = aantal open kaarten (Aas = 1). Om de 4 kaarten een halte. Dezelfde waarde = je wijst iemand anders aan.</li></ul></details>`;}
 
@@ -640,13 +647,15 @@ function vPyr(){
   if(P.stage==='ready')ctl=`<p class="q">${row.name?'De '+row.name:'Rij van '+sl(row.value)}${card.h?', liggend dus dubbel':''}: ${sl(worth)} uitdelen per kaart</p>`+(ME.role==='host'?`<button class="b main" onclick="A.d(0,'flip',${P.k})">Draai kaart om</button>`:`<p class="wait">Wachten tot ${esc(S.players[0].name)} (host) de kaart omdraait…</p>`);
   if(P.stage==='none')ctl=`<div class="res mid">Niemand heeft een ${lab(card.c.r)}</div>`+(ME.role==='host'?`<button class="b main" onclick="A.d(0,'next',${P.k})">Volgende kaart</button>`:`<p class="wait">Wachten op de host…</p>`);
   if(P.stage==='lay'||P.stage==='done'){
-    const mi=myIdx(),k=P.taps.indexOf(mi),laid=P.taps.map((i,n)=>`#${n+1} ${esc(S.players[i].name)}`).join(' · ');
+    const kept=P.kept||[],mi=myIdx(),k=P.taps.indexOf(mi),laid=P.taps.map((i,n)=>`#${n+1} ${esc(S.players[i].name)}`).join(' · ');
     ctl=`<h2>Wie heeft een ${lab(card.c.r)}?</h2><p class="q">Per kaart ${sl(worth)}. Zonder kaart drukken = 1 slok.</p>`;
-    if(isPlayer)ctl+=k>=0?`<div class="res ok">Gelegd als #${k+1}</div>`:P.wrong.includes(mi)?`<div class="res bad">Je had hem niet! 1 slok</div>`:`<button class="b huge" onclick="A.d(${mi},'lay',${P.k})">IK HEB EEN ${lab(card.c.r)}!</button>`;
+    if(isPlayer)ctl+=k>=0?`<div class="res ok">Gelegd als #${k+1}</div>`:kept.includes(mi)?`<div class="res mid">Je houdt hem. Hopen dat hij nog terugkomt!</div>`:P.wrong.includes(mi)?`<div class="res bad">Je had hem niet! 1 slok</div>`:
+      `<button class="b huge" onclick="A.d(${mi},'lay',${P.k})">IK HEB EEN ${lab(card.c.r)}!</button><button class="b ghost" onclick="A.d(${mi},'keep',${P.k})">Ik heb hem, maar ik HOUD hem<small>Gok dat hij later hoger in de boom terugkomt</small></button>`;
     ctl+=laid?`<p class="q">Gelegd: ${laid}</p>`:'<p class="wait">Nog niemand gelegd…</p>';
+    if(kept.length)ctl+=`<p class="q">Houdt: ${kept.map(i=>esc(S.players[i].name)).join(', ')}</p>`;
     if(ME.role==='host')ctl+=`<button class="b ghost" onclick="A.d(0,'done',${P.k})">Verder${P.taps.length?' (de rest heeft hem gemist)':' (niemand legt)'}</button>`;
   }
-  const offline=ME.role==='host'&&P.stage==='lay'?S.players.map((p,i)=>!p.online&&P.m[i]&&!P.taps.includes(i)?`<button class="b ghost" onclick="A.d(${i},'lay',${P.k})">Leg voor ${esc(p.name)} (offline)</button>`:'').join(''):'';
+  const offline=ME.role==='host'&&P.stage==='lay'?S.players.map((p,i)=>!p.online&&P.m[i]&&!P.taps.includes(i)&&!(P.kept||[]).includes(i)?`<button class="b ghost" onclick="A.d(${i},'lay',${P.k})">Leg voor ${esc(p.name)} (offline)</button>`:'').join(''):'';
   return `<div class="panel tree">${tree}</div>${me>=0?myHand(null,null,'lg'):''}<div class="panel">${ctl}${offline}</div>${playersStrip([me],{rank:P.stage==='none'&&card?card.c.r:0})}`;
 }
 
@@ -752,7 +761,7 @@ const A={
     for(const cid in CONN)if(CONN[cid].pid===p.pid)Net.send(cid,{t:'kicked'});S.players.splice(i,1);ev(p.name+' is eruit gezet');push();},
   resume(){let saved=null;try{saved=JSON.parse(lsGet('bussen_host')||'null');}catch(e){}if(saved)hostCreate(saved);},
   d(i,a,v){doAct(i,a,v);},
-  set(k,v){if(ME.role!=='host'||S.phase!=='lobby')return;if(k==='rows'){S.setup.rows=String(v).trim();S.setup.orient=null;}else S.setup[k]=v;push();},
+  set(k,v){if(ME.role!=='host'||S.phase!=='lobby')return;if(k==='decks')v=v===1?1:2;if(k==='rows'){S.setup.rows=String(v).trim();S.setup.orient=null;}else S.setup[k]=v;push();},
   setN(k,n){if(ME.role!=='host'||S.phase!=='lobby')return;const a=S.setup[k];if(n===2&&a.length===1)a.push(k==='trunk'?15:20);if(n===1)a.length=1;push();},
   setV(k,i,v){if(ME.role!=='host'||S.phase!=='lobby')return;if(S.setup[k][i]!==undefined)S.setup[k][i]=v;push();},
   ori(i,j){if(ME.role!=='host'||S.phase!=='lobby')return;const o=S.setup.orient;if(!o||!o[i])return;o[i][j]=o[i][j]==='h'?'v':'h';push();},
