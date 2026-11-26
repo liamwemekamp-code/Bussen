@@ -399,9 +399,9 @@ function lay(i,keep){const P=S.pyr;P.kept=P.kept||[];if(P.taps.includes(i)||P.ke
   layCheck();}
 function layCheck(){const P=S.pyr,need=Object.keys(P.m).length;if(P.taps.length+(P.kept||[]).length>=need){if(P.taps.length)layDone();else{P.stage='done';nextPyr();}}}
 function layDone(){const P=S.pyr,row=P.rows[P.ri],pc=row.cards[P.ci],card=pc.c,worth=row.value*(pc.h?2:1),q=[],nT=P.taps.length;
-  P.taps.slice().reverse().forEach((i,k)=>{const n=P.m[i];let rem=n;
+  P.taps.slice().reverse().forEach((i,k)=>{const n=1;let rem=n;
     S.players[i].hand=S.players[i].hand.filter(c=>{if(rem>0&&c.r===card.r){rem--;return false;}return true;});
-    q.push({from:i,amount:worth*n,reason:`${n}× ${lab(card.r)} gelegd, ${nT>1?(k===0?'langzaamste':k===nT-1?'snelste':'nummer '+(nT-k)):'als enige'}`});});
+    q.push({from:i,amount:worth*n,reason:`${lab(card.r)} gelegd${P.m[i]>1?' (andere '+lab(card.r)+' gehouden)':''}, ${nT>1?(k===0?'langzaamste':k===nT-1?'snelste':'nummer '+(nT-k)):'als enige'}`});});
   P.stage='done';
   if(!q.length){nextPyr();return;}
   S.giveQueue=q;S.afterGive='pyr';startGive();}
@@ -590,7 +590,7 @@ function rulesBox(){return `<details><summary>Spelregels in het kort</summary><u
   <li>1 of 2 pakken kaarten zonder jokers, volledig random geschud. Aas is hoog.</li>
   <li>Ronde 1: rood of zwart. Ronde 2: hoger of lager dan je 1e kaart. Ronde 3: tussen je eerste twee kaarten of erbuiten. Ronde 4: heb je het symbool al of niet. Fout = 1 slok, gelijke waarde = ook fout.</li>
   <li>Regenboog (3 verschillende symbolen), Ginger (3 rood) of Blackout (3 zwart): goed = 3 uitdelen, fout = 3 nemen.</li>
-  <li>De boom: eerst de stam (1 of 2 kaarten), dan de rijen (1, 2, 3… slokken per kaart, liggend dubbel, eindigend op 2 en 1), als laatste de piek (1 of 2). Heb je dezelfde waarde, druk dan zo snel mogelijk op je eigen telefoon. Langzaamste deelt eerst uit, snelste als laatste. Drukken zonder kaart = 1 slok. Je mag je kaart ook houden en gokken dat hij hoger in de boom terugkomt.</li>
+  <li>De boom: eerst de stam (1 of 2 kaarten), dan de rijen (1, 2, 3… slokken per kaart, liggend dubbel, eindigend op 2 en 1), als laatste de piek (1 of 2). Heb je dezelfde waarde, druk dan zo snel mogelijk op je eigen telefoon. Langzaamste deelt eerst uit, snelste als laatste. Drukken zonder kaart = 1 slok. Per boomkaart leg je er maximaal één. Je mag je kaart ook houden en gokken dat hij hoger in de boom terugkomt.</li>
   <li>Meeste kaarten over = de bus in. Gelijkspel: blind een kaart kiezen, laagste gaat. Wie klaar is ziet de kaarten open.</li>
   <li>Bus: 1e gekozen kaart = aantal kaarten, 2e = aantal open kaarten (Aas = 1). Om de 4 kaarten een halte. Dezelfde waarde = je wijst iemand anders aan.</li></ul></details>`;}
 
@@ -650,7 +650,7 @@ function vPyr(){
     const kept=P.kept||[],mi=myIdx(),k=P.taps.indexOf(mi),laid=P.taps.map((i,n)=>`#${n+1} ${esc(S.players[i].name)}`).join(' · ');
     ctl=`<h2>Wie heeft een ${lab(card.c.r)}?</h2><p class="q">Per kaart ${sl(worth)}. Zonder kaart drukken = 1 slok.</p>`;
     if(isPlayer)ctl+=k>=0?`<div class="res ok">Gelegd als #${k+1}</div>`:kept.includes(mi)?`<div class="res mid">Je houdt hem. Hopen dat hij nog terugkomt!</div>`:P.wrong.includes(mi)?`<div class="res bad">Je had hem niet! 1 slok</div>`:
-      `<button class="b huge" onclick="A.d(${mi},'lay',${P.k})">IK HEB EEN ${lab(card.c.r)}!</button><button class="b ghost" onclick="A.d(${mi},'keep',${P.k})">Ik heb hem, maar ik HOUD hem<small>Gok dat hij later hoger in de boom terugkomt</small></button>`;
+      `<button class="b huge" onclick="A.d(${mi},'lay',${P.k})">IK HEB EEN ${lab(card.c.r)}!${P.m[mi]>1?'<small>Je hebt er '+P.m[mi]+': je legt er 1, de rest houd je</small>':''}</button><button class="b ghost" onclick="A.d(${mi},'keep',${P.k})">Ik heb hem, maar ik HOUD hem<small>Gok dat hij later hoger in de boom terugkomt</small></button>`;
     ctl+=laid?`<p class="q">Gelegd: ${laid}</p>`:'<p class="wait">Nog niemand gelegd…</p>';
     if(kept.length)ctl+=`<p class="q">Houdt: ${kept.map(i=>esc(S.players[i].name)).join(', ')}</p>`;
     if(ME.role==='host')ctl+=`<button class="b ghost" onclick="A.d(0,'done',${P.k})">Verder${P.taps.length?' (de rest heeft hem gemist)':' (niemand legt)'}</button>`;
