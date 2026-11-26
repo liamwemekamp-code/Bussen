@@ -183,9 +183,10 @@ let S=null;           /* spelstaat (host: de echte, gasten: kopie) */
 const UI={screen:'home',err:'',conn:'',modal:null,lastEv:-1,busy:false,code:CODE};
 
 /* ================= BOOMVORM ================= */
-function parseShape(str){const p=String(str).split(/[^0-9]+/).filter(Boolean).map(Number);if(p.length<3||p.length>12||p.some(n=>n<1||n>8))return null;
-  let stem=0;while(stem<p.length&&p[stem]===1)stem++;
-  if(stem<1||stem>4||p[p.length-1]!==1)return null;const mid=p.slice(stem,-1);if(!mid.length)return null;return{stem,mid};}
+function parseRows(str){const p=String(str).split(/[^0-9]+/).filter(Boolean).map(Number);const n=p.length;
+  if(n<2||n>8||p[n-1]!==1||p[n-2]!==2||p.slice(0,-1).some(x=>x<2||x>8))return null;return p;}
+function parseShape(st){const mid=parseRows(st&&st.rows);if(!mid)return null;return{stem:(st.trunk||[10]).length,peaks:(st.peak||[15]).length,mid};}
+function defSetup(){return{rows:'4-3-2-1',trunk:[10],peak:[15],orient:null,busPen:'one'};}
 function defOrient(p){return p.mid.map(n=>Array.from({length:n},(_,i)=>i%2===0?'h':'v'));}
 function getOrient(st,p){const o=st.orient,mid=p.mid;if(o&&o.length===mid.length&&o.every((r,i)=>r.length===mid[i]))return o;st.orient=defOrient(p);return st.orient;}
 function treeSize(rows){const maxU=Math.max(...rows.map(r=>r.reduce((a,h)=>a+(h?1.4:1),0))),maxN=Math.max(...rows.map(r=>r.length));return Math.max(20,Math.min(58,Math.floor((300-6*(maxN-1))/maxU)));}
@@ -272,8 +273,8 @@ function hostCreate(resume){
       if(err==='unavailable-id'&&!resume){UI.busy=false;clientJoin(CODE,false);return;}
       if(err){UI.busy=false;UI.err=netErr(err);render();return;}
       ME.code=code;ME.role='host';UI.busy=false;UI.conn='';
-      if(resume){S=resume.S;S.players.forEach((p,i)=>{delete p.offAt;setOn(p,i===0);});}
-      else{S={phase:'lobby',setup:{shape:'1-4-3-2-1-1',trunk:10,peak:15,orient:null,busPen:'one'},players:[newPlayer(ME.pid,ME.name)],deck:[],ev:[],evN:0,seq:0,specN:0};}
+      if(resume){S=resume.S;if(!S.setup||!S.setup.rows||!Array.isArray(S.setup.trunk))S.setup=defSetup();S.players.forEach((p,i)=>{delete p.offAt;setOn(p,i===0);});}
+      else{S={phase:'lobby',setup:defSetup(),players:[newPlayer(ME.pid,ME.name)],deck:[],ev:[],evN:0,seq:0,specN:0};}
       UI.screen='game';history.replaceState(null,'',HERE());
       UI.lastEv=S.evN||0;push();
     });
@@ -324,7 +325,7 @@ function giveDone(){if(S.giveQueue.length)startGive();else if(S.afterGive==='rou
 function act(i,a,v){
   const P=S.players[i];if(!P)return;
   switch(S.phase){
-    case 'lobby':if(a==='start'&&i===0&&S.players.length>=2&&parseShape(S.setup.shape))startGame();else return;break;
+    case 'lobby':if(a==='start'&&i===0&&S.players.length>=2&&parseShape(S.setup))startGame();else return;break;
     case 'round':if(i!==S.turn)return;if(a==='guess'&&!S.reveal)guess(v);else if(a==='next'&&S.reveal)after();else return;break;
     case 'give':if(i!==S.give.from)return;if(a==='ga')ga(v);else if(a==='ok'){if(!gOk())return;}else return;break;
     case 'pyr':{const Py=S.pyr;
@@ -381,11 +382,11 @@ function gOk(){const g=S.give,sum=Object.values(g.alloc).reduce((a,b)=>a+b,0);if
   S.players[g.from].given+=g.amount;ev(`${S.players[g.from].name} deelt uit: ${parts.join(', ')}`,to,true);S.give=null;
   giveDone();return true;}
 function startPyr(){
-  const p=parseShape(S.setup.shape)||{stem:1,mid:[4,3,2,1]},o=getOrient(S.setup,p);
+  const p=parseShape(S.setup)||{stem:1,peaks:1,mid:[4,3,2,1]},o=getOrient(S.setup,p);
   const mk=(n,f)=>Array.from({length:n},(_,i)=>({c:draw(),up:false,h:!!(f&&f[i]==='h')}));
-  const rows=[];for(let k=0;k<p.stem;k++)rows.push({value:S.setup.trunk,name:'stam',cards:mk(1)});
+  const rows=[];S.setup.trunk.forEach(v=>rows.push({value:v,name:'stam',cards:mk(1)}));
   o.forEach((r,i)=>rows.push({value:i+1,cards:mk(r.length,r)}));
-  rows.push({value:S.setup.peak,name:'piek',cards:mk(1)});
+  S.setup.peak.forEach(v=>rows.push({value:v,name:'piek',cards:mk(1)}));
   S.pyr={rows,ri:0,ci:0,k:0,stage:'ready',m:{},taps:[],wrong:[]};S.phase='pyr';ev('Op naar de boom!');
 }
 function flip(){const P=S.pyr,x=P.rows[P.ri].cards[P.ci];x.up=true;const m={};
@@ -545,18 +546,20 @@ function vWatchPick(){
 
 /* ---------- lobby ---------- */
 function shapePreview(st,edit){
-  const p=parseShape(st.shape);if(!p)return '<span class="err">Klopt niet. Begin met de stam (1, of 1-1 voor een lange stam), eindig met de piek (1). Bv. 1-4-3-2-1-1</span>';
+  const p=parseShape(st);if(!p)return '<span class="err">Klopt niet. De rijen lopen af en eindigen altijd op 2 en dan 1, bv. 4-3-2-1</span>';
   const o=getOrient(st,p);
   const all=[[false],...o.map(r=>r.map(x=>x==='h'))];
-  const w=Math.min(34,treeSize(all)),sty=`--w:${w}px`;
-  let h=`<div class="r"><span class="v">piek ${st.peak}</span><div class="card back sm" style="${sty}"></div></div>`;
+  const w=Math.min(34,treeSize(all)),sty=`--w:${w}px`,one=`<div class="card back sm" style="${sty}"></div>`;
+  let h='';
+  for(let k=st.peak.length-1;k>=0;k--)h+=`<div class="r"><span class="v">piek ${st.peak[k]}</span>${one}</div>`;
   for(let i=o.length-1;i>=0;i--)h+=`<div class="r"><span class="v">${i+1}</span>${o[i].map((x,j)=>`<div class="card back sm ${x==='h'?'h':''} ${edit?'edit':''}" style="${sty}" ${edit?`onclick="A.ori(${i},${j})"`:''}>${x==='h'?'<span class="x2">×2</span>':''}</div>`).join('')}</div>`;
-  for(let k=0;k<p.stem;k++)h+=`<div class="r"><span class="v">${k===p.stem-1?'stam '+st.trunk:''}</span><div class="card back sm" style="${sty}"></div></div>`;
+  for(let k=st.trunk.length-1;k>=0;k--)h+=`<div class="r"><span class="v">stam ${st.trunk[k]}</span>${one}</div>`;
   return `<div class="tp">${h}</div>`;
 }
+function valChips(key,arr,opts,dis){return arr.map((v,k)=>`<div class="lbl">${arr.length>1?(key==='trunk'?(k===0?'Onderste stamkaart':'Bovenste stamkaart'):(k===0?'Eerste piek':'Tweede piek (bovenaan)')):(key==='trunk'?'Stam is waard':'Piek is waard')}</div><div class="chips">${opts.map(o=>`<button class="chip ${v===o?'on':''}" ${dis} onclick="A.setV('${key}',${k},${o})">${o}</button>`).join('')}</div>`).join('');}
 function vLobby(){
   const st=S.setup,host=ME.role==='host',url=location.origin+location.pathname;
-  const presets=['1-4-3-2-1-1','1-3-2-1-1','1-4-3-2-1-1-1','1-1-4-3-2-1-1'];
+  const presets=['3-2-1','4-3-2-1','5-4-3-2-1'];
   const dis=host?'':'disabled';
   return `<div class="panel" style="text-align:center"><h3>Iedereen met deze link kan meedoen</h3>
   <button class="b main" onclick="A.share()">Link delen</button><p class="note">${esc(url)}</p></div>
@@ -564,13 +567,15 @@ function vLobby(){
   ${host?(S.players.length<2?'<p class="wait">Wacht tot er minstens 1 iemand meedoet…</p>':`<button class="b main" onclick="A.d(0,'start')">Start het spel</button>`):'<p class="wait">Wachten tot de host start…</p>'}
   ${!host?`<button class="b ghost" onclick="A.leave()">Toch niet meedoen</button>`:''}</div>
   <div class="panel"><h3>Boom ${host?'':'(kiest de host)'}</h3>
-  ${host?`<div class="chips">${presets.map(p=>`<button class="chip ${st.shape===p?'on':''}" onclick="A.set('shape','${p}')">${p}</button>`).join('')}</div>
-  <div class="lbl">Of zelf invullen, bv. 1-5-4-3-2-1-1</div>
-  <input class="inp" value="${esc(st.shape)}" inputmode="text" autocomplete="off" autocorrect="off" spellcheck="false" onchange="A.set('shape',this.value)">
-  <p class="q" style="margin-top:8px">Tik op een kaart om hem te draaien. Liggend telt dubbel.</p>`:`<p class="q">${esc(st.shape)}</p>`}
   ${shapePreview(st,host)}
-  <div class="lbl">Stam is waard</div><div class="chips">${[10,15,20].map(v=>`<button class="chip ${st.trunk===v?'on':''}" ${dis} onclick="A.set('trunk',${v})">${v} slokken</button>`).join('')}</div>
-  <div class="lbl">Piek is waard</div><div class="chips">${[15,20].map(v=>`<button class="chip ${st.peak===v?'on':''}" ${dis} onclick="A.set('peak',${v})">${v} slokken</button>`).join('')}</div>
+  ${host?'<p class="q">Tik op een kaart in een rij om hem te draaien. Liggend telt dubbel.</p>':''}
+  <div class="lbl">Rijen</div>
+  ${host?`<div class="chips">${presets.map(p=>`<button class="chip ${st.rows===p?'on':''}" onclick="A.set('rows','${p}')">${p}</button>`).join('')}</div>
+  <input class="inp" style="margin-top:8px" value="${esc(st.rows)}" placeholder="Of zelf, bv. 6-5-4-3-2-1" inputmode="text" autocomplete="off" autocorrect="off" spellcheck="false" onchange="A.set('rows',this.value)">`:`<p class="q">${esc(st.rows)}</p>`}
+  <div class="lbl">Boomstam</div><div class="chips">${[1,2].map(n=>`<button class="chip ${st.trunk.length===n?'on':''}" ${dis} onclick="A.setN('trunk',${n})">${n} kaart${n>1?'en':''}</button>`).join('')}</div>
+  ${valChips('trunk',st.trunk,[10,15,20,25],dis)}
+  <div class="lbl">Piek</div><div class="chips">${[1,2].map(n=>`<button class="chip ${st.peak.length===n?'on':''}" ${dis} onclick="A.setN('peak',${n})">${n} piek${n>1?'en':''}</button>`).join('')}</div>
+  ${valChips('peak',st.peak,[10,15,20,25],dis)}
   <div class="lbl">Fout in de bus kost</div><div class="chips"><button class="chip ${st.busPen==='one'?'on':''}" ${dis} onclick="A.set('busPen','one')">1 slok</button><button class="chip ${st.busPen==='steps'?'on':''}" ${dis} onclick="A.set('busPen','steps')">Slok per kaart ver</button></div>
   </div>${rulesBox()}`;
 }
@@ -578,7 +583,7 @@ function rulesBox(){return `<details><summary>Spelregels in het kort</summary><u
   <li>2 pakken kaarten zonder jokers, volledig random geschud. Aas is hoog.</li>
   <li>Ronde 1: rood of zwart. Ronde 2: hoger of lager dan je 1e kaart. Ronde 3: tussen je eerste twee kaarten of erbuiten. Ronde 4: heb je het symbool al of niet. Fout = 1 slok, gelijke waarde = ook fout.</li>
   <li>Regenboog (3 verschillende symbolen), Ginger (3 rood) of Blackout (3 zwart): goed = 3 uitdelen, fout = 3 nemen.</li>
-  <li>De boom: eerst de stam, dan de rijen (1, 2, 3… slokken per kaart, liggend dubbel), als laatste de piek. Heb je dezelfde waarde, druk dan zo snel mogelijk op je eigen telefoon. Langzaamste deelt eerst uit, snelste als laatste. Drukken zonder kaart = 1 slok.</li>
+  <li>De boom: eerst de stam (1 of 2 kaarten), dan de rijen (1, 2, 3… slokken per kaart, liggend dubbel, eindigend op 2 en 1), als laatste de piek (1 of 2). Heb je dezelfde waarde, druk dan zo snel mogelijk op je eigen telefoon. Langzaamste deelt eerst uit, snelste als laatste. Drukken zonder kaart = 1 slok.</li>
   <li>Meeste kaarten over = de bus in. Gelijkspel: blind een kaart kiezen, laagste gaat. Wie klaar is ziet de kaarten open.</li>
   <li>Bus: 1e gekozen kaart = aantal kaarten, 2e = aantal open kaarten (Aas = 1). Om de 4 kaarten een halte. Dezelfde waarde = je wijst iemand anders aan.</li></ul></details>`;}
 
@@ -747,7 +752,9 @@ const A={
     for(const cid in CONN)if(CONN[cid].pid===p.pid)Net.send(cid,{t:'kicked'});S.players.splice(i,1);ev(p.name+' is eruit gezet');push();},
   resume(){let saved=null;try{saved=JSON.parse(lsGet('bussen_host')||'null');}catch(e){}if(saved)hostCreate(saved);},
   d(i,a,v){doAct(i,a,v);},
-  set(k,v){if(ME.role!=='host'||S.phase!=='lobby')return;if(k==='shape'){S.setup.shape=String(v);S.setup.orient=null;}else S.setup[k]=v;push();},
+  set(k,v){if(ME.role!=='host'||S.phase!=='lobby')return;if(k==='rows'){S.setup.rows=String(v).trim();S.setup.orient=null;}else S.setup[k]=v;push();},
+  setN(k,n){if(ME.role!=='host'||S.phase!=='lobby')return;const a=S.setup[k];if(n===2&&a.length===1)a.push(k==='trunk'?15:20);if(n===1)a.length=1;push();},
+  setV(k,i,v){if(ME.role!=='host'||S.phase!=='lobby')return;if(S.setup[k][i]!==undefined)S.setup[k][i]=v;push();},
   ori(i,j){if(ME.role!=='host'||S.phase!=='lobby')return;const o=S.setup.orient;if(!o||!o[i])return;o[i][j]=o[i][j]==='h'?'v':'h';push();},
   install(){if(!installEvt)return;installEvt.prompt();installEvt.userChoice.finally(()=>{installEvt=null;render();});},
   watch(i){ME.watch=i;UI.screen='game';render();window.scrollTo(0,0);},
