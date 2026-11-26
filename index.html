@@ -2,7 +2,14 @@
 <html lang="nl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Bussen">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0b3a2a">
 <title>Bussen</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -18,7 +25,7 @@
 html{background:var(--felt2)}
 html,body{margin:0;min-height:100%}
 body{background:radial-gradient(120% 60vh at 50% 0%,#1a6b4c 0%,var(--felt) 60%,var(--felt2) 100%) no-repeat,var(--felt2);color:var(--ink);font:16px/1.45 Rubik,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;min-height:100vh;min-height:100dvh;overflow-x:clip;user-select:none;-webkit-user-select:none}
-#app{max-width:560px;margin:0 auto;padding:12px 14px 150px}
+#app{max-width:560px;margin:0 auto;padding:max(12px,env(safe-area-inset-top)) 14px 150px}
 .top{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .top b{letter-spacing:.08em;color:var(--gold);font-weight:900;font-size:18px}
 .top span{flex:1;opacity:.8;font-size:13px;line-height:1.25}
@@ -511,6 +518,7 @@ function vHome(){
   ${UI.err?`<p class="err">${esc(UI.err)}</p>`:''}
   <p class="note">Loopt er al een potje, dan doe je mee. Zo niet, dan start jij er een en ben jij de host.</p>
   ${canResume?`<button class="b ghost" onclick="A.resume()">Mijn potje hervatten (ik was host)</button>`:''}</div>
+  ${installBox()}
   <details><summary>Hoe werkt het?</summary><ul>
   <li>De eerste die op Spelen tikt wordt de host. Iedereen die daarna de link opent, komt in hetzelfde potje.</li>
   <li>Iedereen speelt op z'n eigen telefoon. Wat er gebeurt en wie wat uitdeelt, zie je live.</li>
@@ -518,6 +526,16 @@ function vHome(){
   <li>Er kan maar één potje tegelijk lopen op deze link.</li>
   <li>Werkt op 4G of wifi en gebruikt maar een paar KB. Lukt verbinden op 4G niet, zet dan iedereen op de hotspot van de host.</li>
   </ul></details>`;
+}
+let installEvt=null;
+window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();installEvt=e;if(UI.screen==='home')render();});
+const STANDALONE=(window.matchMedia&&matchMedia('(display-mode: standalone)').matches)||navigator.standalone===true;
+const IOS=/iphone|ipad|ipod/i.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+function installBox(){
+  if(STANDALONE)return '';
+  if(installEvt)return `<div class="panel"><h3>Als app op je telefoon</h3><button class="b ghost" onclick="A.install()">Installeer Bussen</button></div>`;
+  if(IOS)return `<div class="panel"><h3>Als app op je telefoon</h3><p class="q">Tik onderin Safari op <b>Deel</b> (vierkantje met pijl) en kies <b>Zet op beginscherm</b>. Dan staat Bussen met eigen icoon tussen je apps.</p></div>`;
+  return `<div class="panel"><h3>Als app op je telefoon</h3><p class="q">Open het menu van je browser (⋮) en kies <b>App installeren</b> of <b>Toevoegen aan startscherm</b>.</p></div>`;
 }
 function vWatchPick(){
   return `<div class="logo"><h1 style="font-size:36px">Potje is bezig</h1><p>Wil je meekijken bij een speler? Je ziet dan precies wat die speler ziet.</p></div>
@@ -731,6 +749,7 @@ const A={
   d(i,a,v){doAct(i,a,v);},
   set(k,v){if(ME.role!=='host'||S.phase!=='lobby')return;if(k==='shape'){S.setup.shape=String(v);S.setup.orient=null;}else S.setup[k]=v;push();},
   ori(i,j){if(ME.role!=='host'||S.phase!=='lobby')return;const o=S.setup.orient;if(!o||!o[i])return;o[i][j]=o[i][j]==='h'?'v':'h';push();},
+  install(){if(!installEvt)return;installEvt.prompt();installEvt.userChoice.finally(()=>{installEvt=null;render();});},
   watch(i){ME.watch=i;UI.screen='game';render();window.scrollTo(0,0);},
   pickWatch(){UI.screen='watchpick';render();},
   share(){const url=location.origin+location.pathname;const txt='Doe mee met Bussen!';
@@ -751,6 +770,7 @@ let wake=null;document.addEventListener('click',()=>{if(wake||!ME.role)return;tr
 if(LOCAL)window.__dbg={get S(){return S;},ME,myIdx,canAct,A,UI};
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&ME.role&&ME.role!=='host'&&ME.code&&!Net.isConn())clientJoin(ME.code);});
 window.addEventListener('beforeunload',()=>{if(ME.role&&ME.role!=='host')Net.csend({t:'leave'});});
+if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.serviceWorker.register('sw.js').catch(()=>{});}
 render();
 if(QS.has('play')&&clean(ME.name)){
   let saved=null;try{saved=JSON.parse(lsGet('bussen_host')||'null');}catch(e){}
