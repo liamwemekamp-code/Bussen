@@ -460,10 +460,11 @@ function board(){const B=S.bs,n=B.len;const cards=Array.from({length:n},()=>({c:
   cards[0].seen=true;
   S.bus={rider:S.rider,cards,stops,i:0,cp:-1,last:null,result:null};S.phase='bus';}
 function busGuess(v){const B=S.bus,r=S.players[B.rider];if(v!=='hi'&&v!=='lo')return;
-  const cur=B.cards[B.i].c,nw=draw();
-  if(nw.r===cur.r){B.last={c:nw,v,res:'same'};B.result={type:'swap'};ev(`Zelfde kaart (${lab(nw.r)}${nw.s})! ${r.name} mag iemand anders de bus in sturen`);return;}
+  const pile=B.cards[B.i],cur=pile.c,nw=draw();
+  pile.c=nw;pile.seen=true;pile.n=(pile.n||1)+1;
+  if(nw.r===cur.r){B.last={c:nw,v,res:'same',prev:cur};B.result={type:'swap'};ev(`Zelfde kaart (${lab(nw.r)}${nw.s})! ${r.name} mag iemand anders de bus in sturen`);return;}
   const ok=(v==='hi')===(nw.r>cur.r);
-  B.last={c:nw,v,res:ok?'ok':'bad'};
+  B.last={c:nw,v,res:ok?'ok':'bad',prev:cur};
   if(ok){
     if(B.stops.includes(B.i)){B.cp=B.i;ev(r.name+' haalt de halte!');}
     B.i++;
@@ -471,8 +472,7 @@ function busGuess(v){const B=S.bus,r=S.players[B.rider];if(v!=='hi'&&v!=='lo')re
     B.cards[B.i].seen=true;return;}
   const take=S.setup.busPen==='steps'?B.i-B.cp:1;r.taken+=take;
   B.result={type:'wrong',take};ev(`${r.name}: ${v==='hi'?'hoger':'lager'} → ${lab(nw.r)}${nw.s}. Fout, ${sl(take)}`,[B.rider]);}
-function busReplace(){const B=S.bus;for(let i=B.cp+1;i<B.cards.length;i++){if(!B.cards[i].open)B.cards[i]={c:draw(),open:false,seen:false};}
-  B.i=B.cp+1;B.cards[B.i].seen=true;B.result=null;B.last=null;}
+function busReplace(){const B=S.bus;B.i=B.cp+1;B.cards[B.i].seen=true;B.result=null;B.last=null;}
 
 /* ================= GAST ================= */
 let lastPong=0,pingT=null,rejoinT=null;
@@ -768,12 +768,13 @@ function vBus(){
   B.cards.forEach((x,k)=>{
     const vis=x.open||x.seen,st=B.stops.includes(k);
     let cls=k===B.i?'cur':k<B.i?'passed':'';if(st)cls+=' hs';
-    const card=vis?cardH(x.c,size,true,cls):backT(size,cls);
+    let card=vis?cardH(x.c,size,true,cls):backT(size,cls);
+    if(x.n>1)card=`<div style="position:relative">${card}<span class="x2" style="position:absolute;top:-7px;right:-6px;background:#fff;color:#141414;font-size:10px;font-weight:900;border-radius:999px;padding:2px 5px">${x.n}</span></div>`;
     row+=st?`<div style="position:relative">${card}<span class="tag" style="position:absolute;bottom:-17px;left:50%;transform:translateX(-50%);font-size:11px;color:${B.cp>=k?'#2ecc71':'var(--gold)'};font-weight:700;white-space:nowrap">${B.cp>=k?'halte ✓':'halte'}</span></div>`:card;
   });
-  const cur=B.cards[Math.min(B.i,n-1)].c,last=B.last;
+  const last=B.last,cur=B.result&&last?last.prev:B.cards[Math.min(B.i,n-1)].c;
   const drawn=`<div style="display:flex;align-items:center;justify-content:center;gap:16px;margin:6px 0 4px">
-    <div style="text-align:center"><div class="q" style="font-size:12px">Je staat op</div>${cardH(cur,'lg',true,'')}</div>
+    <div style="text-align:center"><div class="q" style="font-size:12px">${B.result?'Je stond op':'Je staat op'}</div>${cardH(cur,'lg',true,'')}</div>
     <div style="font-weight:900;opacity:.6">→</div>
     <div style="text-align:center"><div class="q" style="font-size:12px">Nieuwe kaart</div>${last?cardH(last.c,'lg',true,'flip'):'<div class="card lg slot"></div>'}</div></div>`;
   const onHalte=B.stops.includes(B.i);
@@ -784,7 +785,7 @@ function vBus(){
     ctl=prev+info+`<h2>Hoger of lager dan ${lab(cur.r)}${cur.s}?</h2>`+
       (can?`<div class="row2"><button class="b" onclick="A.d(${ri},'guess','hi')">Hoger</button><button class="b" onclick="A.d(${ri},'guess','lo')">Lager</button></div>`:`<p class="wait">${esc(r.name)} denkt na…</p>`);
   }else if(B.result.type==='wrong'){
-    ctl=`<div class="res bad">${last.v==='hi'?'Hoger':'Lager'} → ${lab(last.c.r)}${last.c.s}. Fout! ${esc(r.name)} drinkt ${sl(B.result.take)}</div>`+(onHalte?'<p class="q">Op de halte fout, dus nog geen halte.</p>':'')+(can?`<button class="b main" onclick="A.d(${ri},'reset')">Terug naar ${B.cp>=0?'de halte':'het begin'}</button>`:'');
+    ctl=`<div class="res bad">${last.v==='hi'?'Hoger':'Lager'} → ${lab(last.c.r)}${last.c.s}. Fout! ${esc(r.name)} drinkt ${sl(B.result.take)}</div><p class="q">De ${lab(last.c.r)}${last.c.s} ligt nu op die stapel.</p>`+(onHalte?'<p class="q">Op de halte fout, dus nog geen halte.</p>':'')+(can?`<button class="b main" onclick="A.d(${ri},'reset')">Terug naar ${B.cp>=0?'de halte':'het begin'}</button>`:'');
   }else{
     ctl=`<div class="res mid">Zelfde kaart! ${esc(r.name)} wijst iemand aan</div>`+(can?S.players.map((p,i)=>i===ri||p.out?'':`<button class="b" onclick="A.d(${ri},'swap',${i})">${esc(p.name)} gaat de bus in</button>`).join(''):`<p class="wait">${esc(r.name)} kiest een slachtoffer…</p>`);
   }
