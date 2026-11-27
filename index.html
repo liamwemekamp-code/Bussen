@@ -137,6 +137,17 @@ details li{margin:6px 0;font-size:15px}
 .sheet{background:#12392b;width:100%;max-width:560px;border-radius:22px 22px 0 0;padding:18px 16px 28px;max-height:85vh;overflow:auto}
 .note{font-size:13px;opacity:.75;text-align:center;margin:8px 0}
 .warn{background:#6a4c93;border-radius:12px;padding:8px 12px;font-size:14px;font-weight:700;margin:8px 0}
+@keyframes up{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+.stk{position:relative;height:200px;margin:6px 0}
+.stk .card{position:absolute;left:50%;top:40px;margin-left:-23px;animation:.55s ease-in-out 4 alternate both}
+.stk .card.rl{animation-name:rl}.stk .card.rr{animation-name:rr}
+@keyframes rl{0%{transform:translate(0,0) rotate(0)}100%{transform:translate(-70px,-6px) rotate(-10deg)}}
+@keyframes rr{0%{transform:translate(0,0) rotate(0)}100%{transform:translate(70px,6px) rotate(10deg)}}
+.fan2{position:relative;height:240px;margin:4px auto 0;max-width:360px;overflow:visible}
+.fan2 .fc{position:absolute;left:50%;bottom:58px;margin-left:-28px;transform-origin:50% 210%;transition:transform .35s ease}
+.fan2 .fc[onclick]{cursor:pointer}
+.fan2 .ftag{position:absolute;top:-20px;left:50%;transform:translateX(-50%);font-size:11px;font-weight:800;color:var(--gold);white-space:nowrap}
+.fan2 .hand{position:absolute;left:50%;bottom:0;width:150px;margin-left:-75px;z-index:40;pointer-events:none;filter:drop-shadow(0 4px 8px rgba(0,0,0,.4))}
 #splash{position:fixed;inset:0;z-index:100;background:#061a12;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;transition:opacity .9s ease;cursor:pointer}
 #splash.out{opacity:0;pointer-events:none}
 #splash .ph{position:absolute;inset:-4%;background:url(splash.jpg) center 80%/cover no-repeat;animation:kb 3.6s ease-out forwards;opacity:0}
@@ -274,6 +285,7 @@ function draw(){if(!S.deck.length){S.deck=newDeck(S.setup.decks);ev('Stapel is o
 function ev(txt,to,big){S.evN=(S.evN||0)+1;S.ev=(S.ev||[]).concat([{n:S.evN,txt,to:to||[],big:!!big}]).slice(-12);}
 function pub(){const o=Object.assign({},S);delete o.deck;o.deckN=S.deck?S.deck.length:0;o.now=Date.now();return o;}
 function setOn(p,v){if(!p)return;p.online=v;if(v)delete p.offAt;else if(!p.offAt)p.offAt=Date.now();}
+const SHOW=2600,SHUF=2300;
 const KICK_MS=LOCAL&&QS.get('kick')?+QS.get('kick'):60000;
 function hostSave(){lsSet('bussen_host',JSON.stringify({code:ME.code,pid:ME.pid,S}));}
 function push(){S.seq=(S.seq||0)+1;hostSave();Net.broadcast({t:'state',s:pub()});afterState();}
@@ -427,13 +439,13 @@ function toBus(){
   if(c.length===1){S.busWhy=`Meeste kaarten over (${max}).`;startBs(c[0]);}
   else startTb(c,max);
 }
-function startTb(c,n){S.tb={cands:c,n,cards:Array.from({length:Math.max(8,c.length+4)},()=>draw()),picks:{},turn:0,done:false,lose:[]};S.phase='tb';ev('Gelijkspel om de bus: '+c.map(i=>S.players[i].name).join(', '),c);}
-function tbPick(k){const T=S.tb;k=k|0;if(k<0||k>=T.cards.length||Object.values(T.picks).includes(k))return;
+function startTb(c,n){const cards=Array.from({length:Math.max(8,c.length+4)},()=>draw());S.tb={cands:c,n,cards,show:cards.slice().sort((a,b)=>a.r-b.r),t0:Date.now(),picks:{},turn:0,done:false,lose:[]};S.phase='tb';ev('Gelijkspel om de bus: '+c.map(i=>S.players[i].name).join(', '),c);}
+function tbPick(k){const T=S.tb;if(T.t0&&Date.now()<T.t0+SHOW+SHUF-400)return;k=k|0;if(k<0||k>=T.cards.length||Object.values(T.picks).includes(k))return;
   T.picks[T.cands[T.turn]]=k;T.turn++;
   if(T.turn>=T.cands.length){T.done=true;const vals=T.cands.map(i=>T.cards[T.picks[i]].r),min=Math.min(...vals);T.lose=T.cands.filter((i,j)=>vals[j]===min);}}
 function tbNext(){const T=S.tb;if(T.lose.length>1)startTb(T.lose,T.n);else{S.busWhy='Laagste kaart bij het gelijkspel.';startBs(T.lose[0]);}}
-function startBs(pi){S.rider=pi;S.bs={cards:Array.from({length:8},()=>({c:draw(),up:false})),step:0,len:0,open:0};S.phase='bs';ev(S.players[pi].name+' moet de bus in!',[pi],true);}
-function bsPick(k){const B=S.bs,x=B.cards[k|0];if(!x||x.up||B.step>1)return;x.up=true;
+function startBs(pi){S.rider=pi;const cards=Array.from({length:8},()=>({c:draw(),up:false}));S.bs={cards,show:cards.map(x=>x.c).sort((a,b)=>a.r-b.r),t0:Date.now(),step:0,len:0,open:0};S.phase='bs';ev(S.players[pi].name+' moet de bus in!',[pi],true);}
+function bsPick(k){const B=S.bs;if(B.t0&&Date.now()<B.t0+SHOW+SHUF-400)return;const x=B.cards[k|0];if(!x||x.up||B.step>1)return;x.up=true;
   if(B.step===0){B.len=cnt(x.c.r);B.step=1;}else{B.open=Math.min(cnt(x.c.r),B.len);B.step=2;}}
 function board(){const B=S.bs,n=B.len;const cards=Array.from({length:n},()=>({c:draw(),open:false,seen:false}));
   shuffle([...Array(n).keys()]).slice(0,B.open).forEach(i=>cards[i].open=true);
@@ -674,34 +686,51 @@ function vPyr(){
   return `<div class="panel tree">${tree}</div>${me>=0?myHand(null,null,'lg'):''}<div class="panel">${ctl}${offline}</div>${playersStrip([me],{rank:P.stage==='none'&&card?card.c.r:0})}`;
 }
 
+/* ---------- blind kiezen: laten zien, husselen, waaier ---------- */
+function ritStage(o){if(!o||!o.t0)return 'pick';const now=Date.now()-(ME.role==='host'?0:(UI.skew||0));return now<o.t0+SHOW?'show':now<o.t0+SHOW+SHUF?'shuffle':'pick';}
+let stT=null;
+function stageTimer(){clearTimeout(stT);if(!S)return;const o=S.phase==='tb'?S.tb:S.phase==='bs'?S.bs:null;if(!o||!o.t0)return;
+  const now=Date.now()-(ME.role==='host'?0:(UI.skew||0)),b1=o.t0+SHOW,b2=b1+SHUF,nx=now<b1?b1:now<b2?b2:0;if(nx)stT=setTimeout(render,nx-now+40);}
+function ritual(o,items,who){
+  const st=ritStage(o);
+  if(st==='show')return `<p class="q" style="text-align:center">Dit zijn de kaarten. Goed kijken…</p><div class="grid">${o.show.map((c,i)=>`<div style="animation:up .4s ${i*0.06}s ease-out both">${cardH(c,'md',true,'')}</div>`).join('')}</div>`;
+  if(st==='shuffle')return `<p class="q" style="text-align:center">Omgedraaid en husselen…</p><div class="stk">${o.show.map((c,i)=>`<div class="card back md ${i%2?'rr':'rl'}" style="animation-delay:${i*45}ms"></div>`).join('')}</div>`;
+  const n=items.length,span=Math.min(96,n*11),w=56;
+  const cards=items.map((it,k)=>{const ang=n>1?-span/2+span*k/(n-1):0,lift=it.lifted?-48:0;
+    const face=it.up?cardH(it.c,'lg',true,it.lifted?'flip':'',`--w:${w}px`):`<div class="card back lg ${it.click?'tap':''}" style="--w:${w}px"></div>`;
+    return `<div class="fc" style="transform:rotate(${ang}deg) translateY(${lift}px);z-index:${it.lifted?60+k:k+1}" ${it.click||''}>${face}${it.tag?`<span class="ftag">${it.tag}</span>`:''}</div>`;}).join('');
+  return `<p class="q" style="text-align:center">${esc(who)}</p><div class="fan2">${cards}<svg class="hand" viewBox="0 0 140 90" aria-hidden="true"><path d="M8 90 C4 62 22 44 48 42 L96 40 C122 40 132 60 130 90 Z" fill="#d9a27c"/><path d="M34 58 C24 40 34 26 50 30 C64 34 70 48 64 62 C58 70 42 70 34 58 Z" fill="#e7b48e"/><path d="M50 31 C56 33 60 38 61 44" stroke="#c48a64" stroke-width="2" fill="none"/></svg></div>`;
+}
+
 /* ---------- gelijkspel ---------- */
 function vTb(){
   const T=S.tb,me=viewIdx(),names=T.cands.map(i=>esc(S.players[i].name)).join(', ');
-  const picker=T.cands[T.turn],inTie=T.cands.includes(me);
-  const cards=T.cards.map((c,k)=>{const who=Object.keys(T.picks).find(pi=>T.picks[pi]===k);const tag=who!==undefined?esc(S.players[who].name):'';
-    if(T.done)return who!==undefined?`<div style="position:relative">${cardH(c,'md',true,'flip')}<span class="tag" style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--gold);font-weight:700;white-space:nowrap">${tag}</span></div>`:cardH(c,'md',true,'dim');
-    if(!inTie)return `<div style="position:relative">${cardH(c,'md',true,who!==undefined?'hit':'')}${tag?`<span class="tag" style="position:absolute;bottom:-18px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--gold);font-weight:700;white-space:nowrap">${tag}</span>`:''}</div>`;
-    if(who!==undefined)return backT('md','','',tag);
-    return canAct(picker)?backT('md','tap',`onclick="A.d(${picker},'pick',${k})"`):backT('md','');}).join('');
+  const picker=T.cands[T.turn],inTie=T.cands.includes(me),st=ritStage(T);
+  const items=T.cards.map((c,k)=>{const who=Object.keys(T.picks).find(pi=>T.picks[pi]===k);
+    return{c,lifted:who!==undefined,up:T.done?who!==undefined:!inTie,tag:who!==undefined?esc(S.players[who].name):'',
+      click:!T.done&&who===undefined&&canAct(picker)?`onclick="A.d(${picker},'pick',${k})"`:''};});
   let ctl='';
-  if(!T.done)ctl=canAct(picker)?`<h2>${picker===myIdx()?'Jij mag kiezen':esc(S.players[picker].name)+' kiest (jij speelt voor hem/haar)'}</h2>`:`<p class="wait">${esc(S.players[picker].name)} kiest een kaart…</p>`;
-  else{const again=T.lose.length>1;ctl=`<div class="res ${again?'mid':'bad'}">${again?'Wéér gelijk! Nog een keer.':esc(S.players[T.lose[0]].name)+' moet de bus in'}</div>`;
-    const who=T.lose.includes(myIdx())?myIdx():ME.role==='host'?0:-1;
-    ctl+=who>=0&&ME.role!=='spec'?`<button class="b main" onclick="A.d(${who},'next')">${again?'Opnieuw kiezen':'Naar de bus'}</button>`:'<p class="wait">Even wachten…</p>';}
-  return `<div class="panel"><h2>Gelijkspel</h2><p class="q">${names} hebben allemaal ${T.n} kaart${T.n===1?'':'en'} over. Blind kiezen: laagste kaart gaat de bus in.${!inTie?' Jij ziet de kaarten open, zij niet.':''}</p><div class="grid">${cards}</div>${ctl}</div>`;
+  if(st==='pick'){
+    if(!T.done)ctl=canAct(picker)?`<h2>${picker===myIdx()?'Jij mag kiezen: tik een kaart':esc(S.players[picker].name)+' kiest (jij speelt voor hem/haar)'}</h2>`:`<p class="wait">${esc(S.players[picker].name)} kiest een kaart…</p>`;
+    else{const again=T.lose.length>1;ctl=`<div class="res ${again?'mid':'bad'}">${again?'Wéér gelijk! Nog een keer.':esc(S.players[T.lose[0]].name)+' moet de bus in'}</div>`;
+      const who=T.lose.includes(myIdx())?myIdx():ME.role==='host'?0:-1;
+      ctl+=who>=0&&ME.role!=='spec'?`<button class="b main" onclick="A.d(${who},'next')">${again?'Opnieuw kiezen':'Naar de bus'}</button>`:'<p class="wait">Even wachten…</p>';}}
+  const dealer=S.players[0].name;
+  return `<div class="panel"><h2>Gelijkspel</h2><p class="q">${names} hebben allemaal ${T.n} kaart${T.n===1?'':'en'} over. Blind kiezen: laagste kaart gaat de bus in.${!inTie&&st==='pick'&&!T.done?' Jij ziet de kaarten open, zij niet.':''}</p>${ritual(T,items,'Uit de hand van '+dealer)}${ctl}</div>`;
 }
 
 /* ---------- bus klaarzetten ---------- */
 function vBs(){
-  const B=S.bs,ri=S.rider,r=S.players[ri],can=canAct(ri);
-  const cards=B.cards.map((x,k)=>x.up?cardH(x.c,'md',true,'flip'):backT('md',can&&B.step<2?'tap':(B.step>=2?'dim':''),can&&B.step<2?`onclick="A.d(${ri},'pick',${k})"`:'')).join('');
+  const B=S.bs,ri=S.rider,r=S.players[ri],can=canAct(ri),st=ritStage(B);
+  const items=B.cards.map((x,k)=>({c:x.c,up:x.up,lifted:x.up,tag:'',click:can&&B.step<2&&!x.up?`onclick="A.d(${ri},'pick',${k})"`:''}));
   let msg='';
-  if(B.step===0)msg=`<p class="q">Eerste kaart = hoeveel kaarten er in de bus zitten. Aas telt als 1.</p>`;
-  if(B.step===1)msg=`<div class="res bad">Bus van ${B.len} kaart${B.len===1?'':'en'}</div><p class="q">Tweede kaart = hoeveel daarvan open liggen.</p>`;
-  if(B.step===2)msg=`<div class="res mid">${B.len} kaart${B.len===1?'':'en'}, waarvan ${B.open} open</div>`+(can?`<button class="b main" onclick="A.d(${ri},'board')">Instappen</button>`:'');
-  if(!can&&B.step<2)msg+=`<p class="wait">${esc(r.name)} kiest…</p>`;
+  if(st==='pick'){
+    if(B.step===0)msg=`<p class="q">Eerste kaart = hoeveel kaarten er in de bus zitten. Aas telt als 1.</p>`;
+    if(B.step===1)msg=`<div class="res bad">Bus van ${B.len} kaart${B.len===1?'':'en'}</div><p class="q">Tweede kaart = hoeveel daarvan open liggen.</p>`;
+    if(B.step===2)msg=`<div class="res mid">${B.len} kaart${B.len===1?'':'en'}, waarvan ${B.open} open</div>`+(can?`<button class="b main" onclick="A.d(${ri},'board')">Instappen</button>`:'');
+    if(!can&&B.step<2)msg+=`<p class="wait">${esc(r.name)} kiest…</p>`;}
   const head=ri===myIdx()&&ME.role!=='spec'?'Jij moet de bus in!':`${esc(r.name)} moet de bus in`;
-  return `<div class="panel"><h2>${head}</h2>${S.busWhy?`<p class="q">${esc(S.busWhy)}</p>`:''}${can&&ri!==myIdx()?forNote(ri):''}<div class="grid">${cards}</div>${msg}</div>`;
+  return `<div class="panel"><h2>${head}</h2>${S.busWhy?`<p class="q">${esc(S.busWhy)}</p>`:''}${can&&ri!==myIdx()?forNote(ri):''}${ritual(B,items,'Uit de hand van '+S.players[0].name)}${msg}</div>`;
 }
 
 /* ---------- bus ---------- */
@@ -764,7 +793,7 @@ function render(){
     else{const V={lobby:vLobby,round:vRound,give:vGive,pyr:vPyr,tb:vTb,bs:vBs,bus:vBus,end:vEnd,newrider:vNewRider};h=vTop()+(V[S.phase]||vLobby)()+(UI.modal?vModal():'');}
   }catch(e){h=`<div class="panel"><p class="err">Er ging iets mis bij het tonen (${esc(e.message)}).</p></div>`;}
   const ae=document.activeElement,keep=ae&&ae.id&&(ae.id==='nm'||ae.id==='cd')?{id:ae.id,s:ae.selectionStart}:null;
-  $app.innerHTML=h;
+  $app.innerHTML=h;stageTimer();
   if(keep){const el=document.getElementById(keep.id);if(el){el.focus();try{el.setSelectionRange(keep.s,keep.s);}catch(e){}}}
 }
 
