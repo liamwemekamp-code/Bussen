@@ -287,7 +287,7 @@ function pub(){const o=Object.assign({},S);delete o.deck;o.deckN=S.deck?S.deck.l
 function setOn(p,v){if(!p)return;p.online=v;if(v)delete p.offAt;else if(!p.offAt)p.offAt=Date.now();}
 const SHOW=2600,SHUF=2300;
 const KICK_MS=LOCAL&&QS.get('kick')?+QS.get('kick'):60000;
-function hostSave(){lsSet('bussen_host',JSON.stringify({code:ME.code,pid:ME.pid,S}));}
+function hostSave(){lsSet('bussen_host',JSON.stringify({code:ME.code,pid:ME.pid,S,offline:!!ME.offline}));}
 function push(){S.seq=(S.seq||0)+1;hostSave();Net.broadcast({t:'state',s:pub()});afterState();}
 
 function hostCreate(resume){
@@ -499,12 +499,12 @@ function clientMsg(m){
 function netErr(r){return{notfound:'Het potje is niet (meer) te vinden. Staat de telefoon van de host nog aan?',timeout:'Verbinden duurt te lang. Probeer het opnieuw, of zet iedereen op de hotspot van de host.',nolib:'Kon de netwerkcode niet laden.',network:'Geen verbinding met de server. Heb je internet?','unavailable-id':'Deze code is nog bezet, probeer het zo opnieuw.'}[r]||('Er ging iets mis ('+r+'). Probeer opnieuw.');}
 
 /* ================= WIE BEN IK ================= */
-function myIdx(){if(!S)return -1;return S.players.findIndex(p=>p.pid===ME.pid);}
+function myIdx(){if(!S)return -1;if(ME.offline)return -2;return S.players.findIndex(p=>p.pid===ME.pid);}
 function viewIdx(){return ME.role==='spec'?ME.watch:myIdx();}
-function canAct(i){if(!S||ME.role==='spec'||i<0||(S.players[i]&&S.players[i].out))return false;const me=myIdx();if(i===me)return true;
+function canAct(i){if(!S||ME.role==='spec'||i<0||(S.players[i]&&S.players[i].out))return false;if(ME.offline)return true;const me=myIdx();if(i===me)return true;
   return ME.role==='host'&&S.players[i]&&!S.players[i].online;}
 function doAct(i,a,v){if(!canAct(i))return;if(ME.role==='host')act(i,a,v);else Net.csend({t:'act',a,v});}
-function forNote(i){return i!==myIdx()&&ME.role==='host'?`<div class="warn">${esc(S.players[i].name)} is offline. Jij speelt even voor hem/haar.</div>`:'';}
+function forNote(i){return !ME.offline&&i!==myIdx()&&ME.role==='host'?`<div class="warn">${esc(S.players[i].name)} is offline. Jij speelt even voor hem/haar.</div>`:'';}
 
 function afterState(){
   if(!S)return;
@@ -524,7 +524,7 @@ function offWarn(){return `<div id="offw">${offInner()}</div>`;}
 setInterval(()=>{const el=document.getElementById('offw');if(el){const h=offInner();if(el.innerHTML!==h)el.innerHTML=h;}},1000);
 function vTop(){
   const spec=ME.role==='spec'?`<br>Meekijken met <b style="font-size:13px;letter-spacing:0">${esc(S.players[ME.watch]?S.players[ME.watch].name:'')}</b>`:'';
-  return `<div class="top"><b>BUSSEN</b><span>${phaseLabel()}${spec}</span>${ME.role==='spec'?`<button class="ico" onclick="A.pickWatch()">Wissel</button>`:''}<button class="ico" onclick="A.menu()">Stand</button></div>${UI.conn?`<div class="warn">${esc(UI.conn)}</div>`:''}${offWarn()}`;
+  return `<div class="top"><b>BUSSEN</b><span>${ME.offline?'Offline · ':''}${phaseLabel()}${spec}</span>${ME.role==='spec'?`<button class="ico" onclick="A.pickWatch()">Wissel</button>`:''}<button class="ico" onclick="A.menu()">Stand</button></div>${UI.conn?`<div class="warn">${esc(UI.conn)}</div>`:''}${offWarn()}`;
 }
 function playersStrip(skip,opts){
   opts=opts||{};const me=viewIdx();
@@ -550,7 +550,9 @@ function vHome(){
   <button class="b main" ${UI.busy?'disabled':''} onclick="A.play()">${UI.busy?'Verbinden…':'Spelen'}</button>
   ${UI.err?`<p class="err">${esc(UI.err)}</p>`:''}
   <p class="note">Loopt er al een potje, dan doe je mee. Zo niet, dan start jij er een en ben jij de host.</p>
-  ${canResume?`<button class="b ghost" onclick="A.resume()">Mijn potje hervatten (ik was host)</button>`:''}</div>
+  ${canResume?`<button class="b ghost" onclick="A.resume()">${saved.offline?'Offline potje hervatten':'Mijn potje hervatten (ik was host)'}</button>`:''}</div>
+  <div class="panel"><h3>Geen internet?</h3><p class="q">Speel met één telefoon die rondgaat. Werkt overal: in de club, onderweg of in het vliegtuig.</p>
+  <button class="b ghost" onclick="A.offline()">Offline spelen (1 telefoon)</button></div>
   ${installBox()}
   <details><summary>Hoe werkt het?</summary><ul>
   <li>De eerste die op Spelen tikt wordt de host. Iedereen die daarna de link opent, komt in hetzelfde potje.</li>
@@ -591,18 +593,7 @@ function shapePreview(st,edit){
 function deckWarn(st){const p=parseShape(st);if(!p)return '';const need=S.players.length*4+p.stem+p.peaks+p.mid.reduce((a,b)=>a+b,0);const tot=(st.decks||2)*52;
   return need>tot-12?` Let op: met ${S.players.length} spelers en deze boom gaan er al ${need} kaarten uit. Raakt de stapel op, dan wordt er opnieuw geschud.`:'';}
 function valChips(key,arr,opts,dis){return arr.map((v,k)=>`<div class="lbl">${arr.length>1?(key==='trunk'?(k===0?'Onderste stamkaart':'Bovenste stamkaart'):(k===0?'Eerste piek':'Tweede piek (bovenaan)')):(key==='trunk'?'Stam is waard':'Piek is waard')}</div><div class="chips">${opts.map(o=>`<button class="chip ${v===o?'on':''}" ${dis} onclick="A.setV('${key}',${k},${o})">${o}</button>`).join('')}</div>`).join('');}
-function vLobby(){
-  const st=S.setup,host=ME.role==='host',url=location.origin+location.pathname;
-  const presets=['3-2-1','4-3-2-1','5-4-3-2-1'];
-  const dis=host?'':'disabled';
-  return `<div class="panel" style="text-align:center"><h3>Iedereen met deze link kan meedoen</h3>
-  <button class="b main" onclick="A.share()">Link delen</button><p class="note">${esc(url)}</p></div>
-  <div class="panel"><h3>Spelers (${S.players.length} van 8)</h3><div class="plist">${S.players.map((p,i)=>`<div><span><i class="dot ${p.online?'':'off'}"></i>${esc(p.name)}${p.pid===ME.pid?' (jij)':''}</span>${i===0?'<em>host</em>':host?`<button class="chip" style="min-height:36px;padding:6px 12px" onclick="A.kick(${i})">Eruit</button>`:''}</div>`).join('')}</div>
-  ${host?(S.players.length<2?'<p class="wait">Wacht tot er minstens 1 iemand meedoet…</p>':`<button class="b main" onclick="A.d(0,'start')">Start het spel</button>`):'<p class="wait">Wachten tot de host start…</p>'}
-  ${!host?`<button class="b ghost" onclick="A.leave()">Toch niet meedoen</button>`:''}</div>
-  <div class="panel"><h3>Boom ${host?'':'(kiest de host)'}</h3>
-  ${shapePreview(st,host)}
-  ${host?'<p class="q">Tik op een kaart in een rij om hem te draaien. Liggend telt dubbel.</p>':''}
+function lobbySettings(st,host,dis,presets){return `  ${host?'<p class="q">Tik op een kaart in een rij om hem te draaien. Liggend telt dubbel.</p>':''}
   <div class="lbl">Rijen</div>
   ${host?`<div class="chips">${presets.map(p=>`<button class="chip ${st.rows===p?'on':''}" onclick="A.set('rows','${p}')">${p}</button>`).join('')}</div>
   <input class="inp" style="margin-top:8px" value="${esc(st.rows)}" placeholder="Of zelf, bv. 6-5-4-3-2-1" inputmode="text" autocomplete="off" autocorrect="off" spellcheck="false" onchange="A.set('rows',this.value)">`:`<p class="q">${esc(st.rows)}</p>`}
@@ -613,6 +604,24 @@ function vLobby(){
   <div class="lbl">Pakken kaarten</div><div class="chips">${[1,2].map(n=>`<button class="chip ${(st.decks||2)===n?'on':''}" ${dis} onclick="A.set('decks',${n})">${n} pak${n>1?'ken':''}</button>`).join('')}</div>
   <p class="q" style="margin-top:6px">${(st.decks||2)===1?'52 kaarten: elke waarde zit er 4 keer in, elke kaart maar 1 keer.':'104 kaarten: elke waarde zit er 8 keer in, elke kaart 2 keer.'}${deckWarn(st)}</p>
   <div class="lbl">Fout in de bus kost</div><div class="chips"><button class="chip ${st.busPen==='one'?'on':''}" ${dis} onclick="A.set('busPen','one')">1 slok</button><button class="chip ${st.busPen==='steps'?'on':''}" ${dis} onclick="A.set('busPen','steps')">Slok per kaart ver</button></div>
+`;}
+function vLobby(){
+  const st=S.setup,host=ME.role==='host',url=location.origin+location.pathname;
+  const presets=['3-2-1','4-3-2-1','5-4-3-2-1'];
+  const dis=host?'':'disabled';
+  const top=ME.offline?`<div class="panel"><h3>Spelers (${S.players.length} van 8)</h3><p class="q">Offline: alles gebeurt op deze telefoon. Geef hem door aan wie aan de beurt is.</p>
+  <div class="plist">${S.players.map((p,i)=>`<div><span>${esc(p.name)}</span>${S.players.length>1?`<button class="chip" style="min-height:36px;padding:6px 12px" onclick="A.offDel(${i})">Weg</button>`:''}</div>`).join('')}</div>
+  ${S.players.length<8?`<div style="display:flex;gap:8px"><input class="inp" id="offn" placeholder="Naam speler ${S.players.length+1}" maxlength="14" autocomplete="off" onkeydown="if(event.key==='Enter')A.offAdd()"><button class="pm" style="width:auto;padding:0 16px;font-size:16px" onclick="A.offAdd()">+</button></div>`:''}
+  ${S.players.length<2?'<p class="wait">Voeg minstens 2 spelers toe</p>':`<button class="b main" onclick="A.d(0,'start')">Start het spel</button>`}
+  <button class="b ghost" onclick="A.ask()">Terug</button></div>`:'';
+  return ME.offline?top+`<div class="panel"><h3>Boom</h3>${shapePreview(st,host)}`+lobbySettings(st,host,dis,presets)+'</div>'+rulesBox():`<div class="panel" style="text-align:center"><h3>Iedereen met deze link kan meedoen</h3>
+  <button class="b main" onclick="A.share()">Link delen</button><p class="note">${esc(url)}</p></div>
+  <div class="panel"><h3>Spelers (${S.players.length} van 8)</h3><div class="plist">${S.players.map((p,i)=>`<div><span><i class="dot ${p.online?'':'off'}"></i>${esc(p.name)}${p.pid===ME.pid?' (jij)':''}</span>${i===0?'<em>host</em>':host?`<button class="chip" style="min-height:36px;padding:6px 12px" onclick="A.kick(${i})">Eruit</button>`:''}</div>`).join('')}</div>
+  ${host?(S.players.length<2?'<p class="wait">Wacht tot er minstens 1 iemand meedoet…</p>':`<button class="b main" onclick="A.d(0,'start')">Start het spel</button>`):'<p class="wait">Wachten tot de host start…</p>'}
+  ${!host?`<button class="b ghost" onclick="A.leave()">Toch niet meedoen</button>`:''}</div>
+  <div class="panel"><h3>Boom ${host?'':'(kiest de host)'}</h3>
+  ${shapePreview(st,host)}
+  ${lobbySettings(st,host,dis,presets)}
   </div>${rulesBox()}`;
 }
 function rulesBox(){return `<details><summary>Spelregels in het kort</summary><ul>
@@ -675,7 +684,16 @@ function vPyr(){
   let ctl='';
   if(P.stage==='ready')ctl=`<p class="q">${row.name?'De '+row.name:'Rij van '+sl(row.value)}${card.h?', liggend dus dubbel':''}: ${sl(worth)} uitdelen per kaart</p>`+(ME.role==='host'?`<button class="b main" onclick="A.d(0,'flip',${P.k})">Draai kaart om</button>`:`<p class="wait">Wachten tot ${esc(S.players[0].name)} (host) de kaart omdraait…</p>`);
   if(P.stage==='none')ctl=`<div class="res mid">Niemand heeft een ${lab(card.c.r)}</div>`+(ME.role==='host'?`<button class="b main" onclick="A.d(0,'next',${P.k})">Volgende kaart</button>`:`<p class="wait">Wachten op de host…</p>`);
-  if(P.stage==='lay'||P.stage==='done'){
+  if(ME.offline&&(P.stage==='lay'||P.stage==='done')){
+    const kept=P.kept||[];
+    ctl=`<h2>Wie heeft een ${lab(card.c.r)}? Snel!</h2><p class="q">Per kaart ${sl(worth)}. Tik je eigen naam. Zonder kaart tikken = 1 slok.</p>`+
+      S.players.map((p,i)=>{if(p.out)return '';const k=P.taps.indexOf(i);
+        if(k>=0)return `<div class="res ok">${esc(p.name)} legt als #${k+1}</div>`;
+        if(kept.includes(i))return `<div class="res mid">${esc(p.name)} houdt hem</div>`;
+        return `<div class="row2" style="grid-template-columns:2fr 1fr;margin:8px 0"><button class="b" onclick="A.d(${i},'lay',${P.k})">${esc(p.name)} legt</button><button class="b ghost" onclick="A.d(${i},'keep',${P.k})">houdt</button></div>`;}).join('')+
+      `<button class="b ghost" onclick="A.d(0,'done',${P.k})">Verder${P.taps.length?' (de rest heeft hem gemist)':' (niemand legt)'}</button>`;
+  }
+  else if(P.stage==='lay'||P.stage==='done'){
     const kept=P.kept||[],mi=myIdx(),k=P.taps.indexOf(mi),laid=P.taps.map((i,n)=>`#${n+1} ${esc(S.players[i].name)}`).join(' · ');
     ctl=`<h2>Wie heeft een ${lab(card.c.r)}?</h2><p class="q">Per kaart ${sl(worth)}. Zonder kaart drukken = 1 slok.</p>`;
     if(isPlayer)ctl+=k>=0?`<div class="res ok">Gelegd als #${k+1}</div>`:kept.includes(mi)?`<div class="res mid">Je houdt hem. Hopen dat hij nog terugkomt!</div>`:P.wrong.includes(mi)?`<div class="res bad">Je had hem niet! 1 slok</div>`:
@@ -684,7 +702,7 @@ function vPyr(){
     if(kept.length)ctl+=`<p class="q">Houdt: ${kept.map(i=>esc(S.players[i].name)).join(', ')}</p>`;
     if(ME.role==='host')ctl+=`<button class="b ghost" onclick="A.d(0,'done',${P.k})">Verder${P.taps.length?' (de rest heeft hem gemist)':' (niemand legt)'}</button>`;
   }
-  const offline=ME.role==='host'&&P.stage==='lay'?S.players.map((p,i)=>!p.online&&P.m[i]&&!P.taps.includes(i)&&!(P.kept||[]).includes(i)?`<button class="b ghost" onclick="A.d(${i},'lay',${P.k})">Leg voor ${esc(p.name)} (offline)</button>`:'').join(''):'';
+  const offline=!ME.offline&&ME.role==='host'&&P.stage==='lay'?S.players.map((p,i)=>!p.online&&P.m[i]&&!P.taps.includes(i)&&!(P.kept||[]).includes(i)?`<button class="b ghost" onclick="A.d(${i},'lay',${P.k})">Leg voor ${esc(p.name)} (offline)</button>`:'').join(''):'';
   return `<div class="panel tree">${tree}</div>${me>=0?myHand(null,null,'lg'):''}<div class="panel">${ctl}${offline}</div>${playersStrip([me],{rank:P.stage==='none'&&card?card.c.r:0})}`;
 }
 
@@ -707,7 +725,7 @@ function ritual(o,items,who){
 /* ---------- gelijkspel ---------- */
 function vTb(){
   const T=S.tb,me=viewIdx(),names=T.cands.map(i=>esc(S.players[i].name)).join(', ');
-  const picker=T.cands[T.turn],inTie=T.cands.includes(me),st=ritStage(T);
+  const picker=T.cands[T.turn],inTie=ME.offline||T.cands.includes(me),st=ritStage(T);
   const items=T.cards.map((c,k)=>{const who=Object.keys(T.picks).find(pi=>T.picks[pi]===k);
     return{c,lifted:who!==undefined,up:T.done?who!==undefined:!inTie,tag:who!==undefined?esc(S.players[who].name):'',
       click:!T.done&&who===undefined&&canAct(picker)?`onclick="A.d(${picker},'pick',${k})"`:''};});
@@ -785,7 +803,7 @@ function vEnd(){
 }
 function vModal(){
   if(UI.modal==='confirm')return `<div class="ov" onclick="A.close(event)"><div class="sheet"><h2>${ME.role==='host'?'Potje stoppen?':'Potje verlaten?'}</h2><p class="q">${ME.role==='host'?'Jij bent de host: als jij stopt, stopt het potje voor iedereen.':'Je kunt later met dezelfde code terugkomen.'}</p><button class="b red" onclick="A.quit()">Ja</button><button class="b ghost" onclick="A.close()">Nee, verder</button></div></div>`;
-  return `<div class="ov" onclick="A.close(event)"><div class="sheet"><h2>Tussenstand</h2>${vScore()}<button class="b main" onclick="A.close()">Verder spelen</button><button class="b ghost" onclick="A.share()">Link delen</button><button class="b ghost" onclick="A.ask()">${ME.role==='host'?'Potje stoppen':'Potje verlaten'}</button></div></div>`;
+  return `<div class="ov" onclick="A.close(event)"><div class="sheet"><h2>Tussenstand</h2>${vScore()}<button class="b main" onclick="A.close()">Verder spelen</button>${ME.offline?'':`<button class="b ghost" onclick="A.share()">Link delen</button>`}<button class="b ghost" onclick="A.ask()">${ME.role==='host'?'Potje stoppen':'Potje verlaten'}</button></div></div>`;
 }
 
 function render(){
@@ -807,7 +825,15 @@ const A={
   play(){if(!clean(ME.name)){UI.err='Vul eerst je naam in';render();return;}ME.name=clean(ME.name);lsSet('bussen_name',ME.name);clientJoin(CODE,true);},
   kick(i){if(ME.role!=='host'||S.phase!=='lobby'||i<1||!S.players[i])return;const p=S.players[i];S.banned=(S.banned||[]).concat([p.pid]);
     for(const cid in CONN)if(CONN[cid].pid===p.pid)Net.send(cid,{t:'kicked'});S.players.splice(i,1);ev(p.name+' is eruit gezet');push();},
-  resume(){let saved=null;try{saved=JSON.parse(lsGet('bussen_host')||'null');}catch(e){}if(saved)hostCreate(saved);},
+  resume(){let saved=null;try{saved=JSON.parse(lsGet('bussen_host')||'null');}catch(e){}if(!saved)return;
+    if(saved.offline){ME.offline=true;ME.role='host';ME.code='OFFLINE';S=saved.S;UI.screen='game';UI.lastEv=S.evN||0;render();}else hostCreate(saved);},
+  offline(){Net.destroy();ME.offline=true;ME.role='host';ME.code='OFFLINE';
+    S={phase:'lobby',setup:defSetup(),players:clean(ME.name)?[newPlayer(ME.pid,ME.name)]:[],deck:[],ev:[],evN:0,seq:0,specN:0};
+    if(!S.players.length)S.players.push(newPlayer(ME.pid,'Speler 1'));UI.screen='game';UI.lastEv=0;push();
+    setTimeout(()=>{const el=document.getElementById('offn');el&&el.focus();},50);},
+  offAdd(){if(!ME.offline||S.phase!=='lobby'||S.players.length>=8)return;const el=document.getElementById('offn');const n=clean(el&&el.value)||('Speler '+(S.players.length+1));
+    S.players.push(newPlayer('off'+Date.now().toString(36)+S.players.length,n));push();setTimeout(()=>{const e=document.getElementById('offn');e&&e.focus();},30);},
+  offDel(i){if(!ME.offline||S.phase!=='lobby'||!S.players[i]||S.players.length<2)return;S.players.splice(i,1);if(i===0)S.players[0].pid=ME.pid;push();},
   d(i,a,v){doAct(i,a,v);},
   set(k,v){if(ME.role!=='host'||S.phase!=='lobby')return;if(k==='decks')v=v===1?1:2;if(k==='rows'){S.setup.rows=String(v).trim();S.setup.orient=null;}else S.setup[k]=v;push();},
   setN(k,n){if(ME.role!=='host'||S.phase!=='lobby')return;const a=S.setup[k];if(n===2&&a.length===1)a.push(k==='trunk'?15:20);if(n===1)a.length=1;push();},
@@ -820,12 +846,12 @@ const A={
     if(navigator.share){navigator.share({title:'Bussen',text:txt,url}).catch(()=>{});return;}
     try{navigator.clipboard.writeText(url).then(()=>toast('Link gekopieerd'),()=>toast(url));}catch(e){toast(url);}},
   leave(){Net.csend({t:'leave'});setTimeout(()=>{Net.destroy();ME.role=null;ME.code=null;S=null;UI.screen='home';clearInterval(pingT);clearTimeout(rejoinT);history.replaceState(null,'',location.pathname+(LOCAL?'?local&pid='+ME.pid:''));render();},150);},
-  home(){Net.destroy();ME.role=null;ME.code=null;S=null;UI.screen='home';clearInterval(pingT);clearTimeout(rejoinT);render();},
+  home(){Net.destroy();ME.offline=false;ME.role=null;ME.code=null;S=null;UI.screen='home';clearInterval(pingT);clearTimeout(rejoinT);render();},
   toLobby(){if(ME.role!=='host')return;S.phase='lobby';push();},
   menu(){UI.modal='score';render();},
   ask(){UI.modal='confirm';render();},
   close(e){if(e&&e.target!==e.currentTarget)return;UI.modal=null;render();},
-  quit(){UI.modal=null;if(ME.role==='host'){Net.broadcast({t:'ended'});lsSet('bussen_host',null);setTimeout(()=>A.home(),200);}else A.leave();}
+  quit(){UI.modal=null;if(ME.offline){lsSet('bussen_host',null);A.home();return;}if(ME.role==='host'){Net.broadcast({t:'ended'});lsSet('bussen_host',null);setTimeout(()=>A.home(),200);}else A.leave();}
 };
 window.A=A;
 document.addEventListener('dblclick',e=>e.preventDefault(),{passive:false});
@@ -841,7 +867,7 @@ if('serviceWorker' in navigator&&location.protocol==='https:'){navigator.service
 render();
 if(QS.has('play')&&clean(ME.name)){
   let saved=null;try{saved=JSON.parse(lsGet('bussen_host')||'null');}catch(e){}
-  if(saved&&saved.pid===ME.pid&&saved.S&&saved.S.phase!=='end')hostCreate(saved);else clientJoin(CODE,false);
+  if(saved&&saved.pid===ME.pid&&saved.S&&saved.S.phase!=='end'){if(saved.offline)A.resume();else hostCreate(saved);}else clientJoin(CODE,false);
 }
 }
 </script>
