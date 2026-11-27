@@ -445,8 +445,10 @@ function tbPick(k){const T=S.tb;if(T.t0&&Date.now()<T.t0+SHOW+SHUF-400)return;k=
   if(T.turn>=T.cands.length){T.done=true;const vals=T.cands.map(i=>T.cards[T.picks[i]].r),min=Math.min(...vals);T.lose=T.cands.filter((i,j)=>vals[j]===min);}}
 function tbNext(){const T=S.tb;if(T.lose.length>1)startTb(T.lose,T.n);else{S.busWhy='Laagste kaart bij het gelijkspel.';startBs(T.lose[0]);}}
 function startBs(pi){S.rider=pi;const cards=Array.from({length:8},()=>({c:draw(),up:false}));S.bs={cards,show:cards.map(x=>x.c).sort((a,b)=>a.r-b.r),t0:Date.now(),step:0,len:0,open:0};S.phase='bs';ev(S.players[pi].name+' moet de bus in!',[pi],true);}
-function bsPick(k){const B=S.bs;if(B.t0&&Date.now()<B.t0+SHOW+SHUF-400)return;const x=B.cards[k|0];if(!x||x.up||B.step>1)return;x.up=true;
-  if(B.step===0){B.len=cnt(x.c.r);B.step=1;}else{B.open=Math.min(cnt(x.c.r),B.len);B.step=2;}}
+function bsPick(k){const B=S.bs;if(B.t0&&Date.now()<B.t0+SHOW+SHUF-400)return;const x=B.cards[k|0];if(!x||x.up||B.step>1)return;
+  if(B.step===0){B.len=cnt(x.c.r);B.first=x.c;B.step=1;B.cards=shuffle(B.cards.map(y=>({c:y.c,up:false})));B.t0=Date.now()-SHOW+2200;
+    ev(`${S.players[S.rider].name} trekt ${lab(x.c.r)}${x.c.s}: bus van ${B.len} kaart${B.len===1?'':'en'}`);}
+  else{x.up=true;B.open=Math.min(cnt(x.c.r),B.len);B.second=x.c;B.step=2;}}
 function board(){const B=S.bs,n=B.len;const cards=Array.from({length:n},()=>({c:draw(),open:false,seen:false}));
   shuffle([...Array(n).keys()]).slice(0,B.open).forEach(i=>cards[i].open=true);
   const stops=(n>=13?[5,9]:n>=8?[Math.ceil(n/2)]:[]).map(p=>p-1);
@@ -724,10 +726,12 @@ function vBs(){
   const B=S.bs,ri=S.rider,r=S.players[ri],can=canAct(ri),st=ritStage(B);
   const items=B.cards.map((x,k)=>({c:x.c,up:x.up,lifted:x.up,tag:'',click:can&&B.step<2&&!x.up?`onclick="A.d(${ri},'pick',${k})"`:''}));
   let msg='';
+  if(B.step===1&&st==='show'){
+    return `<div class="panel"><h2>${ri===myIdx()&&ME.role!=='spec'?'Jij moet de bus in!':esc(r.name)+' moet de bus in'}</h2><div class="hand" style="margin:18px 0">${cardH(B.first,'xl',true,'flip')}</div><div class="res bad">Bus van ${B.len} kaart${B.len===1?'':'en'}</div><p class="q" style="text-align:center">De kaart gaat terug in de waaier en alles wordt opnieuw geschud…</p></div>`;}
   if(st==='pick'){
     if(B.step===0)msg=`<p class="q">Eerste kaart = hoeveel kaarten er in de bus zitten. Aas telt als 1.</p>`;
-    if(B.step===1)msg=`<div class="res bad">Bus van ${B.len} kaart${B.len===1?'':'en'}</div><p class="q">Tweede kaart = hoeveel daarvan open liggen.</p>`;
-    if(B.step===2)msg=`<div class="res mid">${B.len} kaart${B.len===1?'':'en'}, waarvan ${B.open} open</div>`+(can?`<button class="b main" onclick="A.d(${ri},'board')">Instappen</button>`:'');
+    if(B.step===1)msg=`<div class="res bad">Bus van ${B.len} kaart${B.len===1?'':'en'} (${lab(B.first.r)}${B.first.s})</div><p class="q">Tweede kaart = hoeveel daarvan open liggen. Aas telt als 1.</p>`;
+    if(B.step===2)msg=`<div class="res mid">${B.len} kaart${B.len===1?'':'en'} (${lab(B.first.r)}${B.first.s}), waarvan ${B.open} open (${lab(B.second.r)}${B.second.s})</div>`+(can?`<button class="b main" onclick="A.d(${ri},'board')">Instappen</button>`:'');
     if(!can&&B.step<2)msg+=`<p class="wait">${esc(r.name)} kiest…</p>`;}
   const head=ri===myIdx()&&ME.role!=='spec'?'Jij moet de bus in!':`${esc(r.name)} moet de bus in`;
   return `<div class="panel"><h2>${head}</h2>${S.busWhy?`<p class="q">${esc(S.busWhy)}</p>`:''}${can&&ri!==myIdx()?forNote(ri):''}${ritual(B,items,'Uit de hand van '+S.players[0].name)}${msg}</div>`;
