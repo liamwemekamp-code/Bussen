@@ -148,6 +148,11 @@ details li{margin:6px 0;font-size:15px}
 .fan2 .fc[onclick]{cursor:pointer}
 .fan2 .ftag{position:absolute;top:-20px;left:50%;transform:translateX(-50%);font-size:11px;font-weight:800;color:var(--gold);white-space:nowrap}
 .fan2 .hand{position:absolute;left:50%;bottom:0;width:150px;margin-left:-75px;z-index:40;pointer-events:none;filter:drop-shadow(0 4px 8px rgba(0,0,0,.4))}
+.slap{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:12px 0}
+.tile{border:0;border-radius:20px;min-height:140px;font:900 28px Rubik,sans-serif;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;touch-action:none;box-shadow:inset 0 -6px 0 rgba(0,0,0,.25);cursor:pointer;padding:10px}
+.tile small{font-size:13px;font-weight:600;opacity:.85}
+.tile:active{transform:scale(.97)}
+.tile.done{background:rgba(255,255,255,.1);color:var(--ink);box-shadow:none;font-size:20px;min-height:90px}
 #splash{position:fixed;inset:0;z-index:100;background:#061a12;overflow:hidden;display:flex;align-items:flex-end;justify-content:center;transition:opacity .9s ease;cursor:pointer}
 #splash.out{opacity:0;pointer-events:none}
 #splash .ph{position:absolute;inset:-4%;background:url(splash.jpg) center 80%/cover no-repeat;animation:kb 3.6s ease-out forwards;opacity:0}
@@ -685,13 +690,14 @@ function vPyr(){
   if(P.stage==='ready')ctl=`<p class="q">${row.name?'De '+row.name:'Rij van '+sl(row.value)}${card.h?', liggend dus dubbel':''}: ${sl(worth)} uitdelen per kaart</p>`+(ME.role==='host'?`<button class="b main" onclick="A.d(0,'flip',${P.k})">Draai kaart om</button>`:`<p class="wait">Wachten tot ${esc(S.players[0].name)} (host) de kaart omdraait…</p>`);
   if(P.stage==='none')ctl=`<div class="res mid">Niemand heeft een ${lab(card.c.r)}</div>`+(ME.role==='host'?`<button class="b main" onclick="A.d(0,'next',${P.k})">Volgende kaart</button>`:`<p class="wait">Wachten op de host…</p>`);
   if(ME.offline&&(P.stage==='lay'||P.stage==='done')){
-    const kept=P.kept||[];
-    ctl=`<h2>Wie heeft een ${lab(card.c.r)}? Snel!</h2><p class="q">Per kaart ${sl(worth)}. Tik je eigen naam. Zonder kaart tikken = 1 slok.</p>`+
-      S.players.map((p,i)=>{if(p.out)return '';const k=P.taps.indexOf(i);
-        if(k>=0)return `<div class="res ok">${esc(p.name)} legt als #${k+1}</div>`;
-        if(kept.includes(i))return `<div class="res mid">${esc(p.name)} houdt hem</div>`;
-        return `<div class="row2" style="grid-template-columns:2fr 1fr;margin:8px 0"><button class="b" onclick="A.d(${i},'lay',${P.k})">${esc(p.name)} legt</button><button class="b ghost" onclick="A.d(${i},'keep',${P.k})">houdt</button></div>`;}).join('')+
-      `<button class="b ghost" onclick="A.d(0,'done',${P.k})">Verder${P.taps.length?' (de rest heeft hem gemist)':' (niemand legt)'}</button>`;
+    const kept=P.kept||[],cols=['#c1121f','#1d4ed8','#7c3aed','#0f766e','#b45309','#be185d','#334155','#15803d'];
+    const who=Object.keys(P.m).map(Number).filter(i=>!S.players[i].out),open=who.filter(i=>!P.taps.includes(i)&&!kept.includes(i));
+    ctl=`<h2>${who.length===1?esc(S.players[who[0]].name)+' heeft een '+lab(card.c.r)+'!':'Wie het eerst slaat! '+lab(card.c.r)}</h2><p class="q">Per kaart ${sl(worth)}.${who.length>1?' Sla op je eigen vlak: snelste deelt als laatste uit.':''}</p>
+    <div class="slap">${who.map(i=>{const k=P.taps.indexOf(i),p=S.players[i];
+      if(k>=0)return `<div class="tile done">${esc(p.name)}<small>gelegd als #${k+1}</small></div>`;
+      if(kept.includes(i))return `<div class="tile done">${esc(p.name)}<small>houdt hem</small></div>`;
+      return `<button class="tile" style="background:${cols[i%8]}" onpointerdown="event.preventDefault();A.d(${i},'lay',${P.k})">${esc(p.name)}<small>${P.m[i]>1?'heeft er '+P.m[i]+', legt er 1':'tik = leggen'}</small></button>`;}).join('')}</div>
+    ${open.length?`<div class="chips" style="align-items:center"><span class="q" style="margin:0">Liever houden?</span>${open.map(i=>`<button class="chip" onclick="A.d(${i},'keep',${P.k})">${esc(S.players[i].name)} houdt</button>`).join('')}</div>`:''}`;
   }
   else if(P.stage==='lay'||P.stage==='done'){
     const kept=P.kept||[],mi=myIdx(),k=P.taps.indexOf(mi),laid=P.taps.map((i,n)=>`#${n+1} ${esc(S.players[i].name)}`).join(' · ');
