@@ -185,7 +185,7 @@ const SUITS=['♠','♥','♦','♣'];
 const isRed=s=>s==='♥'||s==='♦';
 const LBL={11:'B',12:'V',13:'H',14:'A'};
 const lab=r=>LBL[r]||String(r);
-const cnt=r=>r===14?1:r;
+const cnt=r=>r;
 const sl=n=>n+' slok'+(n===1?'':'ken');
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const clean=s=>String(s||'').replace(/\s+/g,' ').trim().slice(0,14);
@@ -621,7 +621,7 @@ function rulesBox(){return `<details><summary>Spelregels in het kort</summary><u
   <li>Regenboog (3 verschillende symbolen), Ginger (3 rood) of Blackout (3 zwart): goed = 3 uitdelen, fout = 3 nemen.</li>
   <li>De boom: eerst de stam (1 of 2 kaarten), dan de rijen (1, 2, 3… slokken per kaart, liggend dubbel, eindigend op 2 en 1), als laatste de piek (1 of 2). Heb je dezelfde waarde, druk dan zo snel mogelijk op je eigen telefoon. Langzaamste deelt eerst uit, snelste als laatste. Drukken zonder kaart = 1 slok. Per boomkaart leg je er maximaal één. Je mag je kaart ook houden en gokken dat hij hoger in de boom terugkomt.</li>
   <li>Meeste kaarten over = de bus in. Gelijkspel: blind een kaart kiezen, laagste gaat. Wie klaar is ziet de kaarten open.</li>
-  <li>Bus: 1e gekozen kaart = aantal kaarten, 2e = aantal open kaarten (Aas = 1). Om de 4 kaarten een halte. Dezelfde waarde = je wijst iemand anders aan.</li></ul></details>`;}
+  <li>Bus: 1e gekozen kaart = aantal kaarten, 2e = aantal open kaarten (Aas = 14). Om de 4 kaarten een halte. Dezelfde waarde = je wijst iemand anders aan.</li></ul></details>`;}
 
 /* ---------- rondes ---------- */
 function vRound(){
@@ -729,8 +729,8 @@ function vBs(){
   if(B.step===1&&st==='show'){
     return `<div class="panel"><h2>${ri===myIdx()&&ME.role!=='spec'?'Jij moet de bus in!':esc(r.name)+' moet de bus in'}</h2><div class="hand" style="margin:18px 0">${cardH(B.first,'xl',true,'flip')}</div><div class="res bad">Bus van ${B.len} kaart${B.len===1?'':'en'}</div><p class="q" style="text-align:center">De kaart gaat terug in de waaier en alles wordt opnieuw geschud…</p></div>`;}
   if(st==='pick'){
-    if(B.step===0)msg=`<p class="q">Eerste kaart = hoeveel kaarten er in de bus zitten. Aas telt als 1.</p>`;
-    if(B.step===1)msg=`<div class="res bad">Bus van ${B.len} kaart${B.len===1?'':'en'} (${lab(B.first.r)}${B.first.s})</div><p class="q">Tweede kaart = hoeveel daarvan open liggen. Aas telt als 1.</p>`;
+    if(B.step===0)msg=`<p class="q">Eerste kaart = hoeveel kaarten er in de bus zitten. Aas telt als 14.</p>`;
+    if(B.step===1)msg=`<div class="res bad">Bus van ${B.len} kaart${B.len===1?'':'en'} (${lab(B.first.r)}${B.first.s})</div><p class="q">Tweede kaart = hoeveel daarvan open liggen. Aas telt als 14.</p>`;
     if(B.step===2)msg=`<div class="res mid">${B.len} kaart${B.len===1?'':'en'} (${lab(B.first.r)}${B.first.s}), waarvan ${B.open} open (${lab(B.second.r)}${B.second.s})</div>`+(can?`<button class="b main" onclick="A.d(${ri},'board')">Instappen</button>`:'');
     if(!can&&B.step<2)msg+=`<p class="wait">${esc(r.name)} kiest…</p>`;}
   const head=ri===myIdx()&&ME.role!=='spec'?'Jij moet de bus in!':`${esc(r.name)} moet de bus in`;
